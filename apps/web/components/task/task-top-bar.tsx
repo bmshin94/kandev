@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
 import { PageTopbar, type ParentCrumb } from "@/components/page-topbar";
 import { useOfficeProject } from "@/hooks/use-office-workspace-data";
 import { TaskTopBarTitle } from "@/components/task/task-top-bar-title";
+import { OpenTaskFolderButton } from "@/components/task/open-task-folder-button";
 import { EditorsMenu } from "@/components/task/editors-menu";
 import { LayoutPresetSelector } from "@/components/task/layout-preset-selector";
 import { DocumentControls } from "@/components/task/document/document-controls";
@@ -354,6 +355,7 @@ function TopbarToolsGroup({
             activeSessionId={activeSessionId ?? null}
             embeddedVscodeSupported={embeddedVscodeSupported ?? false}
           />
+          <OpenTaskFolderButton sessionId={activeSessionId ?? null} />
         </>
       )}
       {showDebugToggle && (

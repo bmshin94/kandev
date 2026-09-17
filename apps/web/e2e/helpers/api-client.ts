@@ -2496,7 +2496,12 @@ export class ApiClient {
       workspace_path?: string;
       worktree_path?: string;
       worktree_branch?: string;
-      worktrees?: Array<{ repository_id?: string; worktree_path?: string }>;
+      worktrees?: Array<{
+        id?: string;
+        worktree_id?: string;
+        repository_id?: string;
+        worktree_path?: string;
+      }>;
       error_message?: string;
       metadata?: Record<string, unknown>;
     }>;
