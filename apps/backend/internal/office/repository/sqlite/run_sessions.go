@@ -123,7 +123,7 @@ func (r *Repository) ListLiveRunSessionsForWorkspace(ctx context.Context, worksp
 	var sessions []models.RunSession
 	err := r.ro.SelectContext(ctx, &sessions, r.ro.Rebind(`
 		SELECT * FROM office_run_sessions
-		WHERE workspace_id = ? AND execution_id <> '' AND state IN (?, ?)
+		WHERE workspace_id = ? AND COALESCE(execution_id, '') <> '' AND state IN (?, ?)
 		ORDER BY created_at ASC
 	`), workspaceID, models.RunSessionStatePreparing, models.RunSessionStateRunning)
 	if err != nil {
@@ -133,6 +133,33 @@ func (r *Repository) ListLiveRunSessionsForWorkspace(ctx context.Context, worksp
 		sessions = []models.RunSession{}
 	}
 	return sessions, nil
+}
+
+// BindRunSessionExecution records the runtime identity while the attempt is
+// still preparing. This makes a registered execution visible to pause and
+// deletion sweeps before process startup can race those controls.
+func (r *Repository) BindRunSessionExecution(
+	ctx context.Context, sessionID, executionID, executionProfileID, adapter, model, acpSessionID string,
+) (bool, error) {
+	if executionID == "" {
+		return false, errors.New("bind run session execution: execution ID is required")
+	}
+	result, err := r.db.ExecContext(ctx, r.db.Rebind(`
+		UPDATE office_run_sessions
+		SET execution_id = ?, execution_profile_id = ?, adapter = ?, model = ?,
+		    acp_session_id = ?, version = version + 1
+		WHERE id = ? AND state = ? AND COALESCE(execution_id, '') = ''
+		  AND cancel_requested_at IS NULL
+	`), executionID, executionProfileID, adapter, model, acpSessionID, sessionID,
+		models.RunSessionStatePreparing)
+	if err != nil {
+		return false, fmt.Errorf("bind run session execution: %w", err)
+	}
+	wrote, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("bind run session execution: rows affected: %w", err)
+	}
+	return wrote == 1, nil
 }
 
 // ListUnfinishedRunSessions returns every non-terminal attempt for startup
@@ -183,9 +210,9 @@ func (r *Repository) MarkRunSessionStarted(
 		UPDATE office_run_sessions
 		SET state = ?, execution_id = ?, execution_profile_id = ?, adapter = ?, model = ?,
 		    acp_session_id = ?, started_at = ?, version = version + 1
-		WHERE id = ? AND state = ?
+		WHERE id = ? AND state = ? AND execution_id = ? AND cancel_requested_at IS NULL
 	`), models.RunSessionStateRunning, executionID, executionProfileID, adapter, model,
-		acpSessionID, now, sessionID, models.RunSessionStatePreparing)
+		acpSessionID, now, sessionID, models.RunSessionStatePreparing, executionID)
 	if err != nil {
 		return false, fmt.Errorf("mark run session started: %w", err)
 	}

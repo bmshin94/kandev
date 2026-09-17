@@ -450,3 +450,24 @@ func TestExportSelectedZipRejectsEmptySelection(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidExportSelection", err)
 	}
 }
+
+func TestBundleToFilesRejectsUnsafeAndDuplicatePaths(t *testing.T) {
+	unsafe := []string{"../escape", "/tmp/escape"}
+	for _, name := range unsafe {
+		t.Run(name, func(t *testing.T) {
+			_, err := bundleToFiles(&ConfigBundle{
+				Agents: []AgentConfig{{Name: name}},
+			})
+			if err == nil {
+				t.Fatalf("bundleToFiles(%q) returned nil error", name)
+			}
+		})
+	}
+
+	_, err := bundleToFiles(&ConfigBundle{
+		Agents: []AgentConfig{{Name: "same"}, {Name: "same"}},
+	})
+	if err == nil {
+		t.Fatal("bundleToFiles accepted duplicate archive paths")
+	}
+}

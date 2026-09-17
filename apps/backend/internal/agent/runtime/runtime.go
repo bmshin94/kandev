@@ -51,6 +51,11 @@ type Runtime interface {
 	// the initial prompt exactly once through the lifecycle startup seam.
 	Start(ctx context.Context, spec LaunchSpec) (ExecutionRef, error)
 
+	// StartExecution starts a previously registered execution. Callers that
+	// need to persist the execution identity before process startup use this
+	// split launch/start boundary.
+	StartExecution(ctx context.Context, executionID string) error
+
 	// Resume sends a follow-up prompt to an existing execution.
 	Resume(ctx context.Context, executionID string, prompt string) error
 

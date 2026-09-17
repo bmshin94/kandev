@@ -7,7 +7,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/kandev/kandev/internal/common/logger"
@@ -271,11 +273,36 @@ func bundleToFiles(bundle *ConfigBundle) ([]ExportFile, error) {
 }
 
 func appendYAMLFile(files *[]ExportFile, name string, data interface{}) error {
+	if err := validateExportPath(files, name); err != nil {
+		return err
+	}
 	b, err := yaml.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("marshal %s: %w", name, err)
 	}
 	*files = append(*files, ExportFile{Path: name, Content: string(b)})
+	return nil
+}
+
+// validateExportPath keeps entity-derived archive names inside the
+// .kandev tree and rejects duplicate entries. ZIP readers commonly normalize
+// path separators, so both slash and backslash traversal are rejected before
+// an entry is created.
+func validateExportPath(files *[]ExportFile, name string) error {
+	if name == "" || strings.ContainsRune(name, '\x00') || strings.Contains(name, "\\") ||
+		path.IsAbs(name) || !strings.HasPrefix(name, ".kandev/") || path.Clean(name) != name {
+		return fmt.Errorf("invalid configuration export path %q", name)
+	}
+	for _, segment := range strings.Split(name, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("invalid configuration export path %q", name)
+		}
+	}
+	for _, file := range *files {
+		if file.Path == name {
+			return fmt.Errorf("duplicate configuration export path %q", name)
+		}
+	}
 	return nil
 }
 

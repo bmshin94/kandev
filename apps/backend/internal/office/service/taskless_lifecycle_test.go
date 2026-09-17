@@ -37,6 +37,11 @@ func (l *tasklessTestLauncher) StartRunSession(
 	if err != nil || !reserved {
 		return service.RunSessionLaunch{}, fmt.Errorf("reserve test run session: reserved=%v err=%w", reserved, err)
 	}
+	if _, err := l.svc.RepoForTest().BindRunSessionExecution(
+		ctx, id, "execution-"+id, launch.ProfileID, "test-adapter", "test-model", "acp-"+id,
+	); err != nil {
+		return service.RunSessionLaunch{}, err
+	}
 	if _, err := l.svc.RepoForTest().MarkRunSessionStarted(
 		ctx, id, "execution-"+id, launch.ProfileID, "test-adapter", "test-model", "acp-"+id,
 	); err != nil {

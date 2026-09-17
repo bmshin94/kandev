@@ -33,6 +33,10 @@ type runSessionReader interface {
 	GetRunSession(ctx context.Context, id string) (*models.RunSession, error)
 }
 
+type runSessionHistoryReader interface {
+	ListRunSessions(ctx context.Context, runID string) ([]models.RunSession, error)
+}
+
 // ErrRunNotFound is returned when GetRunDetail can't find the run id.
 var ErrRunNotFound = errors.New("run not found")
 
@@ -256,10 +260,7 @@ func GetRunDetail(
 	}
 
 	invocation, agentName := buildInvocation(ctx, repo, run)
-	sessionID := run.SessionID
-	if sessionID == "" {
-		sessionID = sessionIDFromPayload(run.Payload)
-	}
+	_, sessionID := currentRunSession(ctx, repo, run)
 	sessionDTO := RunSessionDTO{SessionID: sessionID}
 	runtimeDTO, err := buildRuntimeDTO(ctx, repo, run)
 	if err != nil {
@@ -463,18 +464,12 @@ func buildInvocation(
 	if run.ResolvedModel != nil {
 		dto.Model = *run.ResolvedModel
 	}
-	sessionID := run.SessionID
-	if sessionID == "" {
-		sessionID = sessionIDFromPayload(run.Payload)
-	}
-	if reader, ok := repo.(runSessionReader); ok && sessionID != "" {
-		if session, err := reader.GetRunSession(ctx, sessionID); err == nil && session != nil {
-			if session.Adapter != "" {
-				dto.Adapter = session.Adapter
-			}
-			if session.Model != "" {
-				dto.Model = session.Model
-			}
+	if session, _ := currentRunSession(ctx, repo, run); session != nil {
+		if session.Adapter != "" {
+			dto.Adapter = session.Adapter
+		}
+		if session.Model != "" {
+			dto.Model = session.Model
 		}
 	}
 	agent, err := repo.GetAgentInstance(ctx, run.AgentProfileID)
@@ -482,4 +477,32 @@ func buildInvocation(
 		return dto, ""
 	}
 	return dto, agent.Name
+}
+
+// currentRunSession prefers the newest durable attempt. A retry reuses the
+// logical run ID but receives a new run-session row, so the run's first
+// session_id projection must not overwrite the newer invocation snapshot.
+func currentRunSession(
+	ctx context.Context,
+	repo RunDetailRepo,
+	run *models.Run,
+) (*models.RunSession, string) {
+	fallbackID := run.SessionID
+	if fallbackID == "" {
+		fallbackID = sessionIDFromPayload(run.Payload)
+	}
+	if reader, ok := repo.(runSessionHistoryReader); ok {
+		if sessions, err := reader.ListRunSessions(ctx, run.ID); err == nil && len(sessions) > 0 {
+			latest := sessions[len(sessions)-1]
+			if latest.ID != "" {
+				return &latest, latest.ID
+			}
+		}
+	}
+	if reader, ok := repo.(runSessionReader); ok && fallbackID != "" {
+		if session, err := reader.GetRunSession(ctx, fallbackID); err == nil && session != nil {
+			return session, session.ID
+		}
+	}
+	return nil, fallbackID
 }

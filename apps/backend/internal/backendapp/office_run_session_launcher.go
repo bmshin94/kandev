@@ -129,7 +129,7 @@ func (l *officeRunSessionLauncher) StartRunSession(
 			Env:                cloneStringMap(route.Env),
 		}
 	}
-	ref, err := l.runtime.Start(ctx, runtimeapi.LaunchSpec{
+	ref, err := l.runtime.Launch(ctx, runtimeapi.LaunchSpec{
 		AgentProfileID: agent.ID,
 		ExecutorID:     launch.ExecutorID,
 		Prompt:         launch.Prompt,
@@ -156,6 +156,33 @@ func (l *officeRunSessionLauncher) StartRunSession(
 		if route.Model != "" {
 			model = route.Model
 		}
+	}
+	bound, err := l.repo.BindRunSessionExecution(
+		ctx, session.ID, ref.ID, executionProfileID, adapter, model, execution.ACPSessionID,
+	)
+	if err != nil {
+		_ = l.runtime.Stop(context.WithoutCancel(ctx), ref.ID, "run_session_identity_persist_failed")
+		return officeservice.RunSessionLaunch{}, err
+	}
+	if !bound {
+		_ = l.runtime.Stop(context.WithoutCancel(ctx), ref.ID, "run_session_not_admitted")
+		return officeservice.RunSessionLaunch{}, fmt.Errorf("run session %q was no longer preparing", session.ID)
+	}
+	if err := l.AdmitExecution(ctx, owner); err != nil {
+		_ = l.runtime.Stop(context.WithoutCancel(ctx), ref.ID, "run_session_start_admission_failed")
+		_, _ = l.repo.FinishRunSession(context.WithoutCancel(ctx), session.ID, models.RunSessionStateInterrupted, err.Error())
+		return officeservice.RunSessionLaunch{}, err
+	}
+	if err := l.runtime.StartExecution(ctx, ref.ID); err != nil {
+		_ = l.runtime.Stop(context.WithoutCancel(ctx), ref.ID, "run_session_start_failed")
+		_, _ = l.repo.FinishRunSession(context.WithoutCancel(ctx), session.ID, models.RunSessionStateFailed, err.Error())
+		return officeservice.RunSessionLaunch{}, fmt.Errorf("start run session: %w", err)
+	}
+	execution, err = l.runtime.GetExecution(ctx, ref.ID)
+	if err != nil {
+		_ = l.runtime.Stop(context.WithoutCancel(ctx), ref.ID, "run_session_state_read_failed")
+		_, _ = l.repo.FinishRunSession(context.WithoutCancel(ctx), session.ID, models.RunSessionStateFailed, err.Error())
+		return officeservice.RunSessionLaunch{}, fmt.Errorf("read started run session: %w", err)
 	}
 	started, err := l.repo.MarkRunSessionStarted(ctx, session.ID, ref.ID, executionProfileID, adapter, model, execution.ACPSessionID)
 	if err != nil {
@@ -192,6 +219,7 @@ func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) err
 			if _, err := l.repo.FinishRunSession(ctx, session.ID, models.RunSessionStateInterrupted, "runtime execution was not registered"); err != nil {
 				return err
 			}
+			_, _ = l.repo.RequeueClaimedRun(ctx, session.RunID)
 			continue
 		}
 		execution, err := l.runtime.GetExecution(ctx, session.ExecutionID)

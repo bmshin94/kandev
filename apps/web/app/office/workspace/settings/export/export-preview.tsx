@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconArrowLeft, IconDownload } from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
 import { useAppStore } from "@/components/state-provider";
@@ -210,6 +210,16 @@ function useExportManifest(
   };
 }
 
+function useWorkspaceDownloadGeneration(activeWorkspaceId: string) {
+  const workspaceGeneration = useRef(0);
+  const lastWorkspaceId = useRef(activeWorkspaceId);
+  if (lastWorkspaceId.current !== activeWorkspaceId) {
+    lastWorkspaceId.current = activeWorkspaceId;
+    workspaceGeneration.current += 1;
+  }
+  return { workspaceGeneration, lastWorkspaceId };
+}
+
 export function ExportPreview() {
   const { t } = useTranslation();
   const activeWorkspaceId = useAppStore((s) => s.workspaces?.activeId ?? "");
@@ -220,6 +230,8 @@ export function ExportPreview() {
 
   const [reloadToken, setReloadToken] = useState(0);
   const [downloadErrorKey, setDownloadErrorKey] = useState<string | null>(null);
+  const { workspaceGeneration, lastWorkspaceId } =
+    useWorkspaceDownloadGeneration(activeWorkspaceId);
   const usesTouchDrawer = useTouchDrawer();
   const {
     files,
@@ -244,12 +256,20 @@ export function ExportPreview() {
 
   const handleExport = useCallback(async () => {
     if (!activeWorkspaceId || !revision || selectedCount === 0) return;
+	const requestWorkspaceId = activeWorkspaceId;
+	const requestGeneration = workspaceGeneration.current;
     setDownloadErrorKey(null);
     try {
-      const blob = await officeApi.exportSelectedConfigZip(activeWorkspaceId, {
+      const blob = await officeApi.exportSelectedConfigZip(requestWorkspaceId, {
         revision,
         paths: [...selectedPaths],
       });
+	if (
+		workspaceGeneration.current !== requestGeneration ||
+		lastWorkspaceId.current !== requestWorkspaceId
+	) {
+		return;
+	}
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;

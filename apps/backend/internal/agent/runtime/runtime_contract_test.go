@@ -64,6 +64,9 @@ func (f *fakeBackend) Launch(_ context.Context, req *lifecycle.LaunchRequest) (*
 	if f.launchErr != nil {
 		return nil, f.launchErr
 	}
+	if f.launchExec != nil {
+		f.executions[f.launchExec.ID] = f.launchExec
+	}
 	return f.launchExec, nil
 }
 

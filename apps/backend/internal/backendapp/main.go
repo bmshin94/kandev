@@ -2418,6 +2418,9 @@ func buildOfficeFeatureServices(
 	// services.Task satisfies WorkspaceChecker.
 	pauseSvc := officepause.NewService(repo, services.Office, services.Task, log)
 	pauseSvc.SetRunExecutionStopper(runtimeapi.New(lifecycleMgr))
+	if services.Office != nil {
+		services.Office.SetRunExecutionStopper(runtimeapi.New(lifecycleMgr))
+	}
 	routineSvc.SetPauseGate(pauseSvc)
 	routineWakeupDispatcher.SetPauseGate(pauseSvc)
 	schedulerSvc.SetPauseGate(pauseSvc)

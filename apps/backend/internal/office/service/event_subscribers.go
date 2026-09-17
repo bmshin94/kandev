@@ -213,6 +213,13 @@ func (s *Service) resolveLifecycleRun(ctx context.Context, data AgentLifecycleDa
 	return s.repo.GetClaimedTasklessRunForAgent(ctx, agentProfileID)
 }
 
+// exactRunSessionEvent reports whether the lifecycle event carries the
+// immutable run-attempt identity. A missing claimed run for such an event is
+// a stale predecessor signal and must not clear a successor's working state.
+func exactRunSessionEvent(data *AgentLifecycleData) bool {
+	return data != nil && data.RunID != "" && data.RunSessionID != ""
+}
+
 type PromptUsageData struct {
 	AgentExecutionID string      `json:"agent_execution_id,omitempty"`
 	TaskID           string      `json:"task_id"`
@@ -441,6 +448,9 @@ func (s *Service) handleAgentCompleted(ctx context.Context, event *bus.Event) er
 	run, err := s.resolveLifecycleRun(ctx, *data)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if exactRunSessionEvent(data) {
+				return nil
+			}
 			// No claimed run resolves for this event: it already finished
 			// via another path, arrived late/duplicated, or a cancellation
 			// marked the run terminal before this event landed. There is no
@@ -581,6 +591,9 @@ func (s *Service) handleTasklessAgentCompleted(
 	run, err := s.resolveLifecycleRun(ctx, *data)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if exactRunSessionEvent(data) {
+				return nil
+			}
 			// Same reasoning as handleAgentCompleted's and handleAgentFailed's
 			// ErrNoRows exits: no claimed run resolves, so nothing reaches
 			// this function's own clear below, but the agent may still be
@@ -790,6 +803,9 @@ func (s *Service) handleAgentFailed(ctx context.Context, event *bus.Event) error
 	run, err := s.resolveLifecycleRun(ctx, *data)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if exactRunSessionEvent(data) {
+				return nil
+			}
 			// Same reasoning as handleAgentCompleted's ErrNoRows exit: no
 			// claimed run resolves, so nothing reaches HandleAgentFailure's
 			// clear, but the agent may still be "working" from the launch.
@@ -839,6 +855,9 @@ func (s *Service) handleTasklessAgentFailed(
 	run, err := s.resolveLifecycleRun(ctx, *data)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if exactRunSessionEvent(data) {
+				return nil
+			}
 			agentProfileID := data.AgentProfileID
 			if agentProfileID == "" {
 				agentProfileID = data.AgentID

@@ -60,17 +60,31 @@ func (f *facade) Start(ctx context.Context, spec LaunchSpec) (ExecutionRef, erro
 	if err != nil {
 		return ExecutionRef{}, err
 	}
-	if spec.Owner.Kind != "" {
-		if err := spec.OwnerAdmission.AdmitExecution(ctx, spec.Owner); err != nil {
-			cleanupErr := f.Stop(context.WithoutCancel(ctx), ref.ID, "runtime_start_admission_failed")
-			return ExecutionRef{}, errors.Join(err, cleanupErr)
-		}
-	}
-	if err := f.backend.StartAgentProcess(ctx, ref.ID); err != nil {
+	if err := f.StartExecution(ctx, ref.ID); err != nil {
 		cleanupErr := f.Stop(context.WithoutCancel(ctx), ref.ID, "runtime_start_failed")
 		return ExecutionRef{}, errors.Join(err, cleanupErr)
 	}
 	return ref, nil
+}
+
+// StartExecution starts a registered execution after rechecking its durable
+// owner admission. The lifecycle manager repeats the same check immediately
+// before process creation, so a pause or reassignment cannot be crossed by a
+// late process start.
+func (f *facade) StartExecution(ctx context.Context, executionID string) error {
+	if executionID == "" {
+		return fmt.Errorf("runtime: executionID is required")
+	}
+	execution, ok := f.backend.GetExecution(executionID)
+	if !ok || execution == nil {
+		return ErrNotFound
+	}
+	if execution.Owner.Kind != "" && execution.OwnerAdmission != nil {
+		if err := execution.OwnerAdmission.AdmitExecution(ctx, execution.Owner); err != nil {
+			return err
+		}
+	}
+	return f.backend.StartAgentProcess(ctx, executionID)
 }
 
 // Resume sends a follow-up prompt to an existing execution. Attachments

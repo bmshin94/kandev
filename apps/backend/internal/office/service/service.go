@@ -176,6 +176,13 @@ type TaskCanceller interface {
 	CancelTaskExecution(ctx context.Context, taskID string, reason string, force bool) error
 }
 
+// RunExecutionStopper stops a run-owned shared-runtime execution by its
+// durable execution identity. Workspace deletion uses this exact identity
+// before removing the Office rows that make the process attributable.
+type RunExecutionStopper interface {
+	Stop(ctx context.Context, executionID string, reason string) error
+}
+
 // TaskWorkspaceService owns workspace/task rows outside the office schema.
 type TaskWorkspaceService interface {
 	GetWorkspace(ctx context.Context, id string) (*taskmodels.Workspace, error)
@@ -349,6 +356,7 @@ type ServiceOptions struct {
 	EventBus                bus.EventBus
 	TaskStarter             TaskStarter
 	TaskCanceller           TaskCanceller
+	RunExecutionStopper     RunExecutionStopper
 	TaskWorkspace           TaskWorkspaceService
 	TaskTreeDeleter         TaskTreeDeleter
 	WorkspaceGroupCleaner   WorkspaceGroupCleaner
@@ -374,6 +382,7 @@ type Service struct {
 	projectSkillDirResolver ProjectSkillDirResolver
 	taskStarter             TaskStarter
 	runSessionLauncher      RunSessionLauncher
+	runStopper              RunExecutionStopper
 	routingDispatcher       RoutingDispatcher
 	taskCanceller           TaskCanceller
 	taskWorkspace           TaskWorkspaceService
@@ -552,6 +561,7 @@ func NewService(opts ServiceOptions) *Service {
 		eb:                      opts.EventBus,
 		taskStarter:             opts.TaskStarter,
 		taskCanceller:           opts.TaskCanceller,
+		runStopper:              opts.RunExecutionStopper,
 		taskWorkspace:           opts.TaskWorkspace,
 		taskTreeDeleter:         opts.TaskTreeDeleter,
 		workspaceGroupCleaner:   opts.WorkspaceGroupCleaner,
@@ -565,6 +575,12 @@ func NewService(opts ServiceOptions) *Service {
 	}
 	svc.relay = NewChannelRelay(svc)
 	return svc
+}
+
+// SetRunExecutionStopper wires the shared runtime stop seam used by
+// workspace deletion for taskless Office sessions.
+func (s *Service) SetRunExecutionStopper(stopper RunExecutionStopper) {
+	s.runStopper = stopper
 }
 
 // SetWorkspaceGroupCleaner wires the handoff cleanup service after startup
