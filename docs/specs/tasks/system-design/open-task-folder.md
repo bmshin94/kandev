@@ -63,7 +63,9 @@ Remote/headless host limitations remain those of the existing action.
 
 Reuse translated folder copy when possible, adding a localized host-location hint
 where needed. The control has an accessible name, keyboard activation, tooltip,
-loading indicator, and disabled no-session/loading/unavailable states. Catch rejected requests
+loading indicator, and disabled no-session/loading/unavailable states. Pending
+folder launches are shared per session across all controls and clear only when
+the initiating request settles; another session remains independent. Catch rejected requests
 and use the existing localized toast pattern in `useOpenSessionInEditor` so callers
 do not leave unhandled promise rejections. Return null after a surfaced error.
 
@@ -90,7 +92,8 @@ The editors service uses `exec.LookPath` for the platform command (`open`,
 mapping is used for opening, and the POST operation rejects unavailable openers.
 The editors boot payload includes `folderOpeningAvailable` alongside its loaded
 items. The shared editors store retains the capability; loaded editor items with
-an unknown capability still trigger discovery. Transient failure gets one delayed
+an unknown capability still trigger discovery. Each effect reads the live store
+before claiming discovery so simultaneous consumers share one request/retry chain. Transient failure gets one delayed
 retry while controls remain disabled; repeated failure settles to false. Unknown,
 failed, or false discovery disables folder-opening controls in the task toolbar,
 Files menu, and `file-actions-dropdown.tsx`, plus `useOpenSessionFolder`. Editor

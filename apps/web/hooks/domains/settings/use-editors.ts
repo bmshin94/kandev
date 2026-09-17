@@ -3,10 +3,11 @@
 import { useEffect } from "react";
 import { listEditors } from "@/lib/api";
 import { getWebSocketClient } from "@/lib/ws/connection";
-import { useAppStore } from "@/components/state-provider";
+import { useAppStore, useAppStoreApi } from "@/components/state-provider";
 import { useEnsureUserSettings } from "@/hooks/use-ensure-user-settings";
 
 export function useEditors() {
+  const store = useAppStoreApi();
   const folderOpeningAvailable = useAppStore((state) => state.editors.folderOpeningAvailable);
   const editors = useAppStore((state) => state.editors.items);
   const loaded = useAppStore((state) => state.editors.loaded);
@@ -23,7 +24,8 @@ export function useEditors() {
   }, []);
 
   useEffect(() => {
-    if ((loaded && folderOpeningAvailable !== undefined) || loading) return;
+    const current = store.getState().editors;
+    if ((current.loaded && current.folderOpeningAvailable !== undefined) || current.loading) return;
     setEditorsLoading(true);
     listEditors({ cache: "no-store" })
       .catch(async () => {
@@ -40,7 +42,7 @@ export function useEditors() {
       .finally(() => {
         setEditorsLoading(false);
       });
-  }, [loaded, loading, folderOpeningAvailable, setEditors, setEditorsLoading]);
+  }, [store, loaded, loading, folderOpeningAvailable, setEditors, setEditorsLoading]);
 
   return { editors, loaded, loading, folderOpeningAvailable: folderOpeningAvailable === true };
 }

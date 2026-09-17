@@ -27,6 +27,7 @@ vi.mock("@/lib/api", () => ({ listEditors: mocks.listEditors }));
 vi.mock("@/lib/ws/connection", () => ({ getWebSocketClient: () => null }));
 vi.mock("@/hooks/use-ensure-user-settings", () => ({ useEnsureUserSettings: () => {} }));
 vi.mock("@/components/state-provider", () => ({
+  useAppStoreApi: () => store,
   useAppStore: (select: (state: unknown) => unknown) => useStore(store, select),
 }));
 beforeEach(() => {
@@ -35,6 +36,21 @@ beforeEach(() => {
 });
 
 describe("folder capability hydration", () => {
+  it("shares discovery across consumers mounted in the same render", async () => {
+    let finish!: (value: { editors: never[]; folder_opening_available: boolean }) => void;
+    mocks.listEditors.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { result } = renderHook(() => [useEditors(), useEditors(), useEditors()]);
+    const count = mocks.listEditors.mock.calls.length;
+    await act(async () => {
+      finish({ editors: [], folder_opening_available: true });
+    });
+    expect(count).toBe(1);
+    expect(result.current.every((editor) => editor.folderOpeningAvailable)).toBe(true);
+  });
   it("fetches missing capability even when editor items were already loaded", async () => {
     let resolve!: (value: { editors: never[]; folder_opening_available: boolean }) => void;
     mocks.listEditors.mockReturnValue(

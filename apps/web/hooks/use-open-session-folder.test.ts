@@ -13,14 +13,14 @@ vi.mock("@/hooks/domains/settings/use-editors", () => ({
 vi.mock("@/lib/api", () => ({ openSessionFolder }));
 vi.mock("@/components/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  availability.value = true;
+  openSessionFolder.mockResolvedValue({ success: true });
+});
+
 // @covers AC-TASKS-OPEN-FOLDER-001.2, AC-TASKS-OPEN-FOLDER-001.3
 describe("useOpenSessionFolder", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    availability.value = true;
-    openSessionFolder.mockResolvedValue({ success: true });
-  });
-
   it("does not send requests when the host opener is unavailable", async () => {
     availability.value = false;
     const { result } = renderHook(() => useOpenSessionFolder("session-1"));
@@ -109,5 +109,44 @@ describe("useOpenSessionFolder", () => {
       { cache: "no-store" },
       { worktree_id: "wt-new" },
     );
+  });
+});
+
+describe("shared folder launches", () => {
+  it("shares pending state across surfaces while allowing other sessions", async () => {
+    let finish!: (value: { success: boolean }) => void;
+    openSessionFolder.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { result } = renderHook(() => [
+      useOpenSessionFolder("session-1"),
+      useOpenSessionFolder("session-1"),
+      useOpenSessionFolder("session-2"),
+    ]);
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current[0].open();
+    });
+    const sharedLoading = result.current[1].isLoading;
+    const otherLoading = result.current[2].isLoading;
+    await act(async () => {
+      await result.current[1].open();
+      await result.current[2].open();
+    });
+    const count = openSessionFolder.mock.calls.length;
+    await act(async () => {
+      finish({ success: true });
+      await pending;
+    });
+    expect(sharedLoading).toBe(true);
+    expect(otherLoading).toBe(false);
+    expect(count).toBe(2);
+    expect(result.current.every((folder) => !folder.isLoading)).toBe(true);
+    await act(async () => {
+      await result.current[1].open();
+    });
+    expect(openSessionFolder).toHaveBeenCalledTimes(3);
   });
 });

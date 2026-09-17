@@ -162,3 +162,8 @@ until this remediation is pushed. Native Finder verification remains external.
 CodeRabbit summary suggestions are addressed with precise path-fallback and
 capability documentation, plus one delayed retry for transient discovery failure.
 Repeated failures remain disabled without an uncontrolled retry loop.
+
+Follow-up Codex concurrency findings: discovery claims the live store loading
+state before fetching, and all folder controls share pending state per session.
+Deferred-response regressions cover simultaneous discovery consumers, shared
+folder-control disabling, duplicate suppression, release, and session independence.
