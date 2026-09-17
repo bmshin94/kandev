@@ -141,3 +141,20 @@ Public usage documentation is updated in `docs/public/developer-tools.md`. No AD
 - Desktop browser suite passes 3/3 and phone suite passes 2/2, covering both available and unavailable host commands. UI tests stub capability/native opening; backend tests exercise executable discovery.
 - Typecheck, changed-file ESLint, i18n, specification validators, backend build, Vite build and whitespace checks pass. The stale E2E plugin fixture was rebuilt before browser verification.
 - Native Finder verification remains for the user's macOS machine. No main instance was modified.
+
+## PR review remediation
+
+Merge the current main toolbar grouping/panel toggle and locale additions while
+retaining the folder shortcut. Preserve host capability in editor boot state and
+refetch it when already-loaded editor items lack capability information. This
+covers settings-first navigation without enabling unavailable openers. Regression
+coverage includes boot state with installed/missing commands, loaded-state
+fallback discovery, known true/false boot capabilities, and failed discovery.
+
+Local remediation validation passes: backendapp and editor Go suites, 43 focused
+frontend tests plus the four new hydration regressions, typecheck, targeted lint,
+i18n, harness/spec checks, backend and web builds, and all five folder browser
+tests (three desktop, two phone). The adjacent source-attachment browser test
+still times out measuring its repository menu, matching the previously recorded
+baseline failure. Current-head remote CI and review completion remain pending
+until this remediation is pushed. Native Finder verification remains external.

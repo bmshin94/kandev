@@ -1,0 +1,66 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createStore, useStore } from "zustand";
+import { useEditors } from "./use-editors";
+
+const mocks = vi.hoisted(() => ({ listEditors: vi.fn() }));
+const makeStore = (capability?: boolean) =>
+  createStore<{
+    editors: {
+      items: never[];
+      loaded: boolean;
+      loading: boolean;
+      folderOpeningAvailable?: boolean;
+    };
+    setEditors: (items: never[], available?: boolean) => void;
+    setEditorsLoading: (loading: boolean) => void;
+  }>((set) => ({
+    editors: { items: [], loaded: true, loading: false, folderOpeningAvailable: capability },
+    setEditors: (items, available) =>
+      set((state) => ({
+        editors: { ...state.editors, items, loaded: true, folderOpeningAvailable: available },
+      })),
+    setEditorsLoading: (loading) => set((state) => ({ editors: { ...state.editors, loading } })),
+  }));
+let store: ReturnType<typeof makeStore>;
+vi.mock("@/lib/api", () => ({ listEditors: mocks.listEditors }));
+vi.mock("@/lib/ws/connection", () => ({ getWebSocketClient: () => null }));
+vi.mock("@/hooks/use-ensure-user-settings", () => ({ useEnsureUserSettings: () => {} }));
+vi.mock("@/components/state-provider", () => ({
+  useAppStore: (select: (state: unknown) => unknown) => useStore(store, select),
+}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  store = makeStore();
+});
+
+describe("folder capability hydration", () => {
+  it("fetches missing capability even when editor items were already loaded", async () => {
+    let resolve!: (value: { editors: never[]; folder_opening_available: boolean }) => void;
+    mocks.listEditors.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const { result } = renderHook(() => useEditors());
+    await waitFor(() => expect(mocks.listEditors).toHaveBeenCalledTimes(1));
+    expect(result.current.folderOpeningAvailable).toBe(false);
+    await act(async () => {
+      resolve({ editors: [], folder_opening_available: true });
+    });
+    expect(result.current.folderOpeningAvailable).toBe(true);
+  });
+  it.each([true, false])("uses the boot capability %s without another request", (available) => {
+    store = makeStore(available);
+    const { result } = renderHook(() => useEditors());
+    expect(result.current.folderOpeningAvailable).toBe(available);
+    expect(mocks.listEditors).not.toHaveBeenCalled();
+  });
+  it("settles failed discovery as unavailable without repeated fetching", async () => {
+    mocks.listEditors.mockRejectedValue(new Error("offline"));
+    const { result } = renderHook(() => useEditors());
+    await waitFor(() => expect(store.getState().editors.folderOpeningAvailable).toBe(false));
+    expect(result.current.folderOpeningAvailable).toBe(false);
+    expect(mocks.listEditors).toHaveBeenCalledTimes(1);
+  });
+});

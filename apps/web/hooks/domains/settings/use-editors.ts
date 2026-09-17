@@ -7,9 +7,7 @@ import { useAppStore } from "@/components/state-provider";
 import { useEnsureUserSettings } from "@/hooks/use-ensure-user-settings";
 
 export function useEditors() {
-  const folderOpeningAvailable = useAppStore(
-    (state) => state.editors.folderOpeningAvailable === true,
-  );
+  const folderOpeningAvailable = useAppStore((state) => state.editors.folderOpeningAvailable);
   const editors = useAppStore((state) => state.editors.items);
   const loaded = useAppStore((state) => state.editors.loaded);
   const loading = useAppStore((state) => state.editors.loading);
@@ -25,7 +23,7 @@ export function useEditors() {
   }, []);
 
   useEffect(() => {
-    if (loaded || loading) return;
+    if ((loaded && folderOpeningAvailable !== undefined) || loading) return;
     setEditorsLoading(true);
     listEditors({ cache: "no-store" })
       .then((response) => {
@@ -37,7 +35,7 @@ export function useEditors() {
       .finally(() => {
         setEditorsLoading(false);
       });
-  }, [loaded, loading, setEditors, setEditorsLoading]);
+  }, [loaded, loading, folderOpeningAvailable, setEditors, setEditorsLoading]);
 
-  return { editors, loaded, loading, folderOpeningAvailable };
+  return { editors, loaded, loading, folderOpeningAvailable: folderOpeningAvailable === true };
 }

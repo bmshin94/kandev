@@ -87,7 +87,9 @@ The existing GET `/api/v1/editors` response includes `folder_opening_available`.
 The editors service uses `exec.LookPath` for the platform command (`open`,
 `xdg-open`, or `explorer`); unsupported platforms report false. The same command
 mapping is used for opening, and the POST operation rejects unavailable openers.
-The shared editors store retains the capability. Unknown, failed, or false discovery
+The editors boot payload includes `folderOpeningAvailable` alongside its loaded
+items. The shared editors store retains the capability; loaded editor items with
+an unknown capability still trigger discovery, which settles to false on failure. Unknown, failed, or false discovery
 disables task toolbar, Files menu, file editor actions, and the shared request hook.
 No desktop dialog or mobile bottom sheet opens while unavailable. This checks
 executable installation, like IDE discovery; launch-time failures still show errors.

@@ -24,6 +24,7 @@ import { usePlanActions } from "@/hooks/domains/kanban/use-plan-actions";
 import { useExecutorEnvironmentAvailability } from "@/hooks/domains/session/use-executor-environment-availability";
 import { useToast } from "@/components/toast-provider";
 import { isMessageSendError, MessageSendError } from "@/lib/chat/message-send-error";
+import { QueueAdmissionError, QueueFullError } from "@/lib/api/domains/queue-api";
 import type { DiffComment } from "@/lib/diff/types";
 import type { AgentMessageComment } from "@/lib/state/slices/comments";
 import type { ChatPanelState } from "./use-chat-panel-state";
@@ -129,6 +130,28 @@ function pickInputPlaceholder(a: PlaceholderArgs): string {
  *  send error from an ambiguous connection drop/timeout. */
 function showMessageSendToast(error: unknown, toast: ReturnType<typeof useToast>["toast"]) {
   console.error("Failed to send message:", error);
+  if (error instanceof QueueFullError) {
+    toast({
+      title: t("task:messageNotSent"),
+      description: t("task:queueAdmissionFull"),
+      variant: "error",
+    });
+    return;
+  }
+  if (error instanceof QueueAdmissionError) {
+    const copy = {
+      validation: t("task:queueAdmissionValidation"),
+      "identity-conflict": t("task:queueAdmissionIdentityConflict"),
+      "session-unavailable": t("task:queueAdmissionSessionUnavailable"),
+      unavailable: t("task:queueAdmissionUnavailable"),
+    }[error.code];
+    toast({
+      title: t("task:messageNotSent"),
+      description: copy,
+      variant: "error",
+    });
+    return;
+  }
   if (isMessageSendError(error)) {
     toast({
       title: t("task:messageNotSent"),
@@ -478,6 +501,7 @@ export function ChatInputArea(props: ChatInputAreaProps) {
   return (
     <div
       data-testid="chat-input-area"
+      data-input-mode={panelState.inputMode}
       className={cn(
         "bg-card flex-shrink-0",
         !disclosure?.enabled && "px-2 pb-2 pt-1",
@@ -504,6 +528,7 @@ export function ChatInputArea(props: ChatInputAreaProps) {
               taskId={statusRowTaskId}
               sessionId={resolvedSessionId}
               sessionState={sessionState}
+              previewTarget={planActions.proceedPreviewTarget}
               nextStepName={proceedStepName}
               onProceed={proceed}
               isAgentBusy={isAgentBusy}
