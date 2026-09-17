@@ -1,3 +1,5 @@
+import { normalizeProseSeparators } from "./normalize-separators";
+
 /**
  * Pure markdown normalization plus a bounded, value-keyed LRU cache.
  *
@@ -398,7 +400,7 @@ export function normalizeMarkdown(input: string): string {
     out.push(line);
   }
 
-  const result = out.join("\n");
+  const result = normalizeProseSeparators(out).join("\n");
   return hadTrailingNewline && !result.endsWith("\n") ? result + "\n" : result;
 }
 
