@@ -47,8 +47,9 @@ worktree ID. Existing no-argument callers retain their behavior.
 
 The existing POST `/api/v1/task-sessions/:id/open-folder` already accepts
 `OpenFolderRequest.WorktreeID`. `Service.OpenFolder` resolves it through
-`resolveSessionPath`: explicit session-owned worktree, otherwise first worktree,
-otherwise repository local path. The browser sends identifiers, never a raw path
+`resolveSessionPath`: a non-empty worktree ID must belong to the session or fail
+with `ErrWorkspaceNotFound`. Only an empty ID permits the first-worktree and then
+repository-local-path fallbacks. The browser sends identifiers, never a raw path
 or shell command. Multiple choices must be explicit at the new shortcut and phone
 entry point. Clear stale picker selection on session changes; closing a picker
 must not issue a request.
@@ -89,7 +90,10 @@ The editors service uses `exec.LookPath` for the platform command (`open`,
 mapping is used for opening, and the POST operation rejects unavailable openers.
 The editors boot payload includes `folderOpeningAvailable` alongside its loaded
 items. The shared editors store retains the capability; loaded editor items with
-an unknown capability still trigger discovery, which settles to false on failure. Unknown, failed, or false discovery
-disables task toolbar, Files menu, file editor actions, and the shared request hook.
+an unknown capability still trigger discovery. Transient failure gets one delayed
+retry while controls remain disabled; repeated failure settles to false. Unknown,
+failed, or false discovery disables folder-opening controls in the task toolbar,
+Files menu, and `file-actions-dropdown.tsx`, plus `useOpenSessionFolder`. Editor
+entries retain their existing `editors` and `useOpenSessionInEditor` behavior.
 No desktop dialog or mobile bottom sheet opens while unavailable. This checks
 executable installation, like IDE discovery; launch-time failures still show errors.

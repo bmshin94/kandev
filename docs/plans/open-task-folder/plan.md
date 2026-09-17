@@ -152,9 +152,13 @@ coverage includes boot state with installed/missing commands, loaded-state
 fallback discovery, known true/false boot capabilities, and failed discovery.
 
 Local remediation validation passes: backendapp and editor Go suites, 43 focused
-frontend tests plus the four new hydration regressions, typecheck, targeted lint,
+frontend tests plus the five new hydration/retry regressions, typecheck, targeted lint,
 i18n, harness/spec checks, backend and web builds, and all five folder browser
 tests (three desktop, two phone). The adjacent source-attachment browser test
 still times out measuring its repository menu, matching the previously recorded
 baseline failure. Current-head remote CI and review completion remain pending
 until this remediation is pushed. Native Finder verification remains external.
+
+CodeRabbit summary suggestions are addressed with precise path-fallback and
+capability documentation, plus one delayed retry for transient discovery failure.
+Repeated failures remain disabled without an uncontrolled retry loop.

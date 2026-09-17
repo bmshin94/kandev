@@ -26,6 +26,11 @@ export function useEditors() {
     if ((loaded && folderOpeningAvailable !== undefined) || loading) return;
     setEditorsLoading(true);
     listEditors({ cache: "no-store" })
+      .catch(async () => {
+        // Keep one shared discovery in flight and retry transient failures once.
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return listEditors({ cache: "no-store" });
+      })
       .then((response) => {
         setEditors(response.editors ?? [], response.folder_opening_available === true);
       })

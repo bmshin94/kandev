@@ -30,7 +30,7 @@ vi.mock("@/components/state-provider", () => ({
   useAppStore: (select: (state: unknown) => unknown) => useStore(store, select),
 }));
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   store = makeStore();
 });
 
@@ -56,11 +56,25 @@ describe("folder capability hydration", () => {
     expect(result.current.folderOpeningAvailable).toBe(available);
     expect(mocks.listEditors).not.toHaveBeenCalled();
   });
+  it("retries transient discovery once while keeping folder opening disabled", async () => {
+    mocks.listEditors.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({
+      editors: [],
+      folder_opening_available: true,
+    });
+    const { result } = renderHook(() => useEditors());
+    expect(result.current.folderOpeningAvailable).toBe(false);
+    await waitFor(() => expect(result.current.folderOpeningAvailable).toBe(true), {
+      timeout: 3000,
+    });
+    expect(mocks.listEditors).toHaveBeenCalledTimes(2);
+  });
   it("settles failed discovery as unavailable without repeated fetching", async () => {
     mocks.listEditors.mockRejectedValue(new Error("offline"));
     const { result } = renderHook(() => useEditors());
-    await waitFor(() => expect(store.getState().editors.folderOpeningAvailable).toBe(false));
+    await waitFor(() => expect(store.getState().editors.folderOpeningAvailable).toBe(false), {
+      timeout: 3000,
+    });
     expect(result.current.folderOpeningAvailable).toBe(false);
-    expect(mocks.listEditors).toHaveBeenCalledTimes(1);
+    expect(mocks.listEditors).toHaveBeenCalledTimes(2);
   });
 });
