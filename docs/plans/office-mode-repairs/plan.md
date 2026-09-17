@@ -11,6 +11,7 @@ system_design:
   - ../../specs/office/system-design/taskless-run-sessions.md
   - ../../specs/office/system-design/run-observation.md
   - ../../specs/office/system-design/workspace-topbar-actions.md
+  - ../../specs/office/system-design/workspace-kill-switch-02.md
   - ../../specs/office/system-design/config-export.md
 legacy_specs: []
 ---
