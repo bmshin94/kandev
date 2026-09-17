@@ -251,6 +251,12 @@ func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) err
 		if _, finishErr := l.repo.FinishRunSession(ctx, session.ID, state, message); finishErr != nil {
 			return finishErr
 		}
+		if state == models.RunSessionStateFinished {
+			outcome := officeservice.RunOutcomeProcessed
+			if _, finishErr := l.repo.FinishRun(ctx, session.RunID, officeservice.RunStatusFinished, &outcome); finishErr != nil {
+				return finishErr
+			}
+		}
 		if state == models.RunSessionStateInterrupted || state == models.RunSessionStateFailed {
 			_, _ = l.repo.RequeueClaimedRun(ctx, session.RunID)
 		}

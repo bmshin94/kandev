@@ -297,7 +297,9 @@ func (p *EventPublisher) publishAgentStreamEventWithAttempt(
 	}
 
 	busEvent := bus.NewEvent(events.AgentStream, "agent-manager", payload)
-	subject := events.BuildAgentStreamSubject(execution.SessionID)
+	subject := events.BuildAgentStreamSubject(agentStreamSubjectID(
+		executionOwnerKind(execution), execution.SessionID, execution.RunSessionID,
+	))
 
 	if err := p.eventBus.Publish(context.Background(), subject, busEvent); err != nil {
 		p.logger.Error("failed to publish agent stream event",
@@ -366,7 +368,9 @@ func (p *EventPublisher) PublishAgentStreamEventPayload(payload *AgentStreamEven
 	}
 
 	busEvent := bus.NewEvent(events.AgentStream, "agent-manager", *payload)
-	subject := events.BuildAgentStreamSubject(payload.SessionID)
+	subject := events.BuildAgentStreamSubject(agentStreamSubjectID(
+		payload.OwnerKind, payload.SessionID, payload.RunSessionID,
+	))
 
 	if err := p.eventBus.Publish(context.Background(), subject, busEvent); err != nil {
 		p.logger.Error("failed to publish agent stream event payload",
@@ -374,6 +378,13 @@ func (p *EventPublisher) PublishAgentStreamEventPayload(payload *AgentStreamEven
 			zap.String("session_id", payload.SessionID),
 			zap.Error(err))
 	}
+}
+
+func agentStreamSubjectID(ownerKind ExecutionOwnerKind, sessionID, runSessionID string) string {
+	if ownerKind == ExecutionOwnerRun && runSessionID != "" {
+		return runSessionID
+	}
+	return sessionID
 }
 
 // PublishGitEvent publishes a unified git event to the event bus.

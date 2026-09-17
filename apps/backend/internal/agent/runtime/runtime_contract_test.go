@@ -254,6 +254,22 @@ func TestRuntime_RunOwnerAdmissionRejectsStaleAttempt(t *testing.T) {
 	}
 }
 
+func TestRuntime_TaskOwnerDoesNotRequireRunAdmission(t *testing.T) {
+	t.Parallel()
+	backend := newFakeBackend()
+	backend.launchExec = &lifecycle.AgentExecution{ID: "exec-task-owner"}
+	rt := agentruntime.New(backend)
+	if _, err := rt.Launch(context.Background(), agentruntime.LaunchSpec{
+		Owner: lifecycle.ExecutionOwner{
+			Kind:      lifecycle.ExecutionOwnerTask,
+			TaskID:    "task-owner",
+			SessionID: "session-owner",
+		},
+	}); err != nil {
+		t.Fatalf("task-owned Launch returned error: %v", err)
+	}
+}
+
 func TestRuntime_Launch_PassesThroughLaunchRequestMetadata(t *testing.T) {
 	t.Parallel()
 	backend := newFakeBackend()

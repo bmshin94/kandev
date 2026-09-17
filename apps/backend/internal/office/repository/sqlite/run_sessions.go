@@ -236,8 +236,10 @@ func (r *Repository) FinishRunSession(
 		UPDATE office_run_sessions
 		SET state = ?, finished_at = ?, error_message = ?, version = version + 1
 		WHERE id = ? AND state IN (?, ?)
+		  AND (cancel_requested_at IS NULL OR ? <> ?)
 	`), state, now, errorMessage, sessionID,
-		models.RunSessionStatePreparing, models.RunSessionStateRunning)
+		models.RunSessionStatePreparing, models.RunSessionStateRunning,
+		state, models.RunSessionStateFinished)
 	if err != nil {
 		return false, fmt.Errorf("finish run session: %w", err)
 	}

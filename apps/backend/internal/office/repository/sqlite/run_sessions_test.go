@@ -75,6 +75,24 @@ func TestRunSessionReservationCAS(t *testing.T) {
 	if err != nil || !reserved {
 		t.Fatalf("first reservation = %v, %v; want true, nil", reserved, err)
 	}
+	executionBound, err := repo.BindRunSessionExecution(
+		ctx, first.ID, "execution-cas-1", "profile-cas", "adapter", "model", "",
+	)
+	if err != nil || !executionBound {
+		t.Fatalf("bind execution = %v, %v; want true, nil", executionBound, err)
+	}
+	requested, err := repo.RequestRunSessionCancellation(ctx, first.ID)
+	if err != nil || !requested {
+		t.Fatalf("request cancellation = %v, %v; want true, nil", requested, err)
+	}
+	finished, err := repo.FinishRunSession(ctx, first.ID, models.RunSessionStateFinished, "")
+	if err != nil || finished {
+		t.Fatalf("finish after cancellation = %v, %v; want false, nil", finished, err)
+	}
+	cancelled, err := repo.FinishRunSession(ctx, first.ID, models.RunSessionStateCancelled, "cancelled")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel after cancellation = %v, %v; want true, nil", cancelled, err)
+	}
 	duplicate := *first
 	duplicate.ID = "session-cas-duplicate"
 	reserved, err = repo.ReserveRunSession(ctx, &duplicate)

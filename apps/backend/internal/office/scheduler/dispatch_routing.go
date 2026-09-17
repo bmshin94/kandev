@@ -77,6 +77,9 @@ func (ss *SchedulerService) DispatchWithRouting(
 	if agent == nil || run == nil {
 		return false, false, fmt.Errorf("dispatch: nil run or agent")
 	}
+	if extractRunTaskID(run.Payload) != "" && ss.taskStarter == nil {
+		return false, false, nil
+	}
 	prior, err := ss.repo.ListRouteAttempts(ctx, run.ID)
 	if err != nil {
 		return false, false, fmt.Errorf("dispatch: list prior: %w", err)
