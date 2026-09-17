@@ -854,18 +854,7 @@ func (s *Service) handleTasklessAgentFailed(
 	}
 	run, err := s.resolveLifecycleRun(ctx, *data)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			if exactRunSessionEvent(data) {
-				return nil
-			}
-			agentProfileID := data.AgentProfileID
-			if agentProfileID == "" {
-				agentProfileID = data.AgentID
-			}
-			s.clearAgentWorking(ctx, agentProfileID, data.RunID)
-			return nil
-		}
-		return err
+		return s.handleTasklessAgentLookupError(ctx, data, err)
 	}
 	s.AppendRunEvent(ctx, run.ID, "error", "error", map[string]interface{}{
 		"session_id":     data.SessionID,
@@ -886,6 +875,25 @@ func (s *Service) handleTasklessAgentFailed(
 	if wrote {
 		s.publishRunProcessedForWorkspace(ctx, run.ID, RunStatusFailed, run, data.WorkspaceID)
 	}
+	return nil
+}
+
+func (s *Service) handleTasklessAgentLookupError(
+	ctx context.Context,
+	data *AgentLifecycleData,
+	err error,
+) error {
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if exactRunSessionEvent(data) {
+		return nil
+	}
+	agentProfileID := data.AgentProfileID
+	if agentProfileID == "" {
+		agentProfileID = data.AgentID
+	}
+	s.clearAgentWorking(ctx, agentProfileID, data.RunID)
 	return nil
 }
 
@@ -1005,7 +1013,8 @@ func (s *Service) handlePromptUsage(ctx context.Context, event *bus.Event) error
 		return nil
 	}
 	var fields *sqlite.TaskExecutionFields
-	if data.TaskID == "" && data.RunSessionID != "" {
+	switch {
+	case data.TaskID == "" && data.RunSessionID != "":
 		if data.SessionID == "" {
 			data.SessionID = data.RunSessionID
 		}
@@ -1016,10 +1025,10 @@ func (s *Service) handlePromptUsage(ctx context.Context, event *bus.Event) error
 			WorkspaceID:            data.WorkspaceID,
 			AssigneeAgentProfileID: data.AgentProfileID,
 		}
-	} else if data.TaskID == "" || data.SessionID == "" {
+	case data.TaskID == "" || data.SessionID == "":
 		s.recordCostEventDropped(costDropReasonMissingIDs, data.TaskID)
 		return nil
-	} else {
+	default:
 		fields, err = s.repo.GetTaskExecutionFields(ctx, data.TaskID)
 		if err != nil {
 			s.recordCostEventDropped(costDropReasonTaskFieldsError, data.TaskID)

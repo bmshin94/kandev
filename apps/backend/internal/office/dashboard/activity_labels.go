@@ -10,6 +10,8 @@ import (
 // Activity rows are intentionally not joined one-by-one: the feed is a hot
 // read path and historical identifiers must remain useful when a target was
 // later removed.
+//
+//nolint:cyclop // Label enrichment intentionally handles optional bounded lookups and fallbacks.
 func (s *DashboardService) enrichActivityLabels(
 	ctx context.Context,
 	workspaceID string,
@@ -19,6 +21,16 @@ func (s *DashboardService) enrichActivityLabels(
 	if len(entries) == 0 {
 		return
 	}
+	agentNames := s.activityAgentNames(ctx, workspaceID, agents)
+	tasksByID := s.activityTaskLabels(ctx, workspaceID, entries)
+	s.applyActivityLabels(entries, agentNames, tasksByID)
+}
+
+func (s *DashboardService) activityAgentNames(
+	ctx context.Context,
+	workspaceID string,
+	agents []*models.AgentInstance,
+) map[string]string {
 	if agents == nil && s.agents != nil {
 		if listed, err := s.agents.ListAgentInstances(ctx, workspaceID); err == nil {
 			agents = listed
@@ -30,25 +42,44 @@ func (s *DashboardService) enrichActivityLabels(
 			agentNames[agent.ID] = agent.Name
 		}
 	}
+	return agentNames
+}
 
-	needsTasks := false
+func (s *DashboardService) activityTaskLabels(
+	ctx context.Context,
+	workspaceID string,
+	entries []*models.ActivityEntry,
+) map[string]taskLabel {
 	for _, entry := range entries {
 		if entry != nil && entry.TargetType == models.ActivityTargetType("task") && entry.TargetID != "" {
-			needsTasks = true
-			break
+			return s.loadActivityTaskLabels(ctx, workspaceID)
 		}
 	}
-	tasksByID := map[string]taskLabel{}
-	if needsTasks {
-		if tasks, err := s.repo.ListTasksByWorkspace(ctx, workspaceID, true); err == nil {
-			for _, task := range tasks {
-				if task != nil {
-					tasksByID[task.ID] = taskLabel{Name: task.Title, Identifier: task.Identifier}
-				}
-			}
-		}
-	}
+	return map[string]taskLabel{}
+}
 
+func (s *DashboardService) loadActivityTaskLabels(
+	ctx context.Context,
+	workspaceID string,
+) map[string]taskLabel {
+	tasksByID := map[string]taskLabel{}
+	tasks, err := s.repo.ListTasksByWorkspace(ctx, workspaceID, true)
+	if err != nil {
+		return tasksByID
+	}
+	for _, task := range tasks {
+		if task != nil {
+			tasksByID[task.ID] = taskLabel{Name: task.Title, Identifier: task.Identifier}
+		}
+	}
+	return tasksByID
+}
+
+func (s *DashboardService) applyActivityLabels(
+	entries []*models.ActivityEntry,
+	agentNames map[string]string,
+	tasksByID map[string]taskLabel,
+) {
 	for _, entry := range entries {
 		if entry == nil {
 			continue

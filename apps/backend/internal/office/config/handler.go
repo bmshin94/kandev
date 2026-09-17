@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -110,9 +111,10 @@ func (h *Handler) exportSelectedConfigZip(c *gin.Context) {
 	reader, err := h.svc.ExportSelectedZip(c.Request.Context(), c.Param("wsId"), request.Revision, request.Paths)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err == ErrExportRevisionConflict {
+		switch {
+		case errors.Is(err, ErrExportRevisionConflict):
 			status = http.StatusConflict
-		} else if err == ErrInvalidExportSelection {
+		case errors.Is(err, ErrInvalidExportSelection):
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

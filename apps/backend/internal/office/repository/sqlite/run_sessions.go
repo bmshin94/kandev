@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/kandev/kandev/internal/office/models"
 )
 
@@ -15,24 +17,19 @@ import (
 // (run_id, attempt) is a lost reservation and leaves the predecessor row
 // untouched. A later attempt may coexist with the predecessor, but never
 // overwrites its durable identity.
+//
+//nolint:cyclop // Reservation keeps transaction, CAS, and rollback handling together.
 func (r *Repository) ReserveRunSession(ctx context.Context, session *models.RunSession) (bool, error) {
-	if session == nil || session.ID == "" || session.RunID == "" || session.WorkspaceID == "" ||
-		session.AgentProfileID == "" || session.Attempt <= 0 || session.State == "" {
-		return false, errors.New("reserve run session: incomplete session")
+	if err := validateRunSessionReservation(session); err != nil {
+		return false, err
 	}
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("reserve run session: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var profileWorkspace string
-	if err := tx.GetContext(ctx, &profileWorkspace, r.db.Rebind(`
-		SELECT COALESCE(workspace_id, '') FROM agent_profiles WHERE id = ?
-	`), session.AgentProfileID); err != nil {
-		return false, fmt.Errorf("reserve run session: resolve agent workspace: %w", err)
-	}
-	if profileWorkspace != session.WorkspaceID {
-		return false, fmt.Errorf("reserve run session: agent workspace %q does not match %q", profileWorkspace, session.WorkspaceID)
+	if err := r.validateRunSessionWorkspace(ctx, tx, session); err != nil {
+		return false, err
 	}
 
 	result, err := tx.ExecContext(ctx, r.db.Rebind(`
@@ -58,6 +55,49 @@ func (r *Repository) ReserveRunSession(ctx context.Context, session *models.RunS
 		return false, nil
 	}
 
+	bound, err := r.bindReservedRunSession(ctx, tx, session)
+	if err != nil {
+		return false, err
+	}
+	if !bound {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("reserve run session: commit: %w", err)
+	}
+	return true, nil
+}
+
+func validateRunSessionReservation(session *models.RunSession) error {
+	if session == nil || session.ID == "" || session.RunID == "" || session.WorkspaceID == "" ||
+		session.AgentProfileID == "" || session.Attempt <= 0 || session.State == "" {
+		return errors.New("reserve run session: incomplete session")
+	}
+	return nil
+}
+
+func (r *Repository) validateRunSessionWorkspace(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	session *models.RunSession,
+) error {
+	var profileWorkspace string
+	if err := tx.GetContext(ctx, &profileWorkspace, r.db.Rebind(`
+		SELECT COALESCE(workspace_id, '') FROM agent_profiles WHERE id = ?
+	`), session.AgentProfileID); err != nil {
+		return fmt.Errorf("reserve run session: resolve agent workspace: %w", err)
+	}
+	if profileWorkspace != session.WorkspaceID {
+		return fmt.Errorf("reserve run session: agent workspace %q does not match %q", profileWorkspace, session.WorkspaceID)
+	}
+	return nil
+}
+
+func (r *Repository) bindReservedRunSession(
+	ctx context.Context,
+	tx *sqlx.Tx,
+	session *models.RunSession,
+) (bool, error) {
 	// Only the first attempt is projected onto runs.session_id. The dedicated
 	// session table remains authoritative for retries and preserves the
 	// predecessor identity.
@@ -73,19 +113,14 @@ func (r *Repository) ReserveRunSession(ctx context.Context, session *models.RunS
 	if err != nil {
 		return false, fmt.Errorf("reserve run session: bind rows affected: %w", err)
 	}
-	if bound == 0 {
-		var runStatus string
-		if err := tx.GetContext(ctx, &runStatus, r.db.Rebind(`SELECT status FROM runs WHERE id = ?`), session.RunID); err != nil {
-			return false, fmt.Errorf("reserve run session: verify run claim: %w", err)
-		}
-		if runStatus != "claimed" {
-			return false, nil
-		}
+	if bound == 1 {
+		return true, nil
 	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("reserve run session: commit: %w", err)
+	var runStatus string
+	if err := tx.GetContext(ctx, &runStatus, r.db.Rebind(`SELECT status FROM runs WHERE id = ?`), session.RunID); err != nil {
+		return false, fmt.Errorf("reserve run session: verify run claim: %w", err)
 	}
-	return true, nil
+	return runStatus == "claimed", nil
 }
 
 // GetRunSession returns one run-owned session by durable identity.

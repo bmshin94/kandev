@@ -39,6 +39,7 @@ func newOfficeRunSessionLauncher(
 	}
 }
 
+//nolint:cyclop // The launch sequence keeps reservation, identity binding, admission, and cleanup together.
 func (l *officeRunSessionLauncher) StartRunSession(
 	ctx context.Context,
 	run *models.Run,
@@ -209,6 +210,8 @@ func (l *officeRunSessionLauncher) StartRunSession(
 // ReconcileRunSessions runs after lifecycle recovery and before the Office
 // scheduler can claim work. A replacement is allowed only after the exact
 // predecessor is proven absent or terminal.
+//
+//nolint:gocognit // Recovery must handle each durable predecessor state before replacement.
 func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) error {
 	sessions, err := l.repo.ListUnfinishedRunSessions(ctx)
 	if err != nil {
@@ -277,6 +280,8 @@ func isLiveExecution(status v1.AgentStatus) bool {
 
 // AdmitExecution is the fail-closed owner check used before allocation, at
 // lifecycle registration, and immediately before process start.
+//
+//nolint:cyclop // The ordered fail-closed checks are the owner admission invariant.
 func (l *officeRunSessionLauncher) AdmitExecution(ctx context.Context, owner runtimeapi.ExecutionOwner) error {
 	if owner.Kind != runtimeapi.ExecutionOwnerRun || owner.WorkspaceID == "" || owner.RunID == "" ||
 		owner.RunSessionID == "" || owner.Attempt <= 0 || owner.AgentProfileID == "" {
