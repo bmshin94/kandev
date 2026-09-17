@@ -565,7 +565,12 @@ export class OfficeApiClient {
 
   async createRoutine(
     wsId: string,
-    data: { name: string; description?: string; catch_up_policy?: string },
+    data: {
+      name: string;
+      description?: string;
+      task_template?: string;
+      catch_up_policy?: string;
+    },
   ): Promise<Record<string, unknown>> {
     const res = await this.request<{ routine: Record<string, unknown> }>(
       "POST",
@@ -578,6 +583,10 @@ export class OfficeApiClient {
   async getRoutine(id: string): Promise<Record<string, unknown>> {
     const res = await this.request<{ routine: Record<string, unknown> }>("GET", `/routines/${id}`);
     return res.routine ?? (res as unknown as Record<string, unknown>);
+  }
+
+  async listRoutineRuns(routineId: string): Promise<Record<string, unknown>> {
+    return this.request("GET", `/routines/${routineId}/runs`);
   }
 
   /** Manual fire (AC-OFFICE-KILL-SWITCH-002.4). Raw: a paused workspace answers 409. */

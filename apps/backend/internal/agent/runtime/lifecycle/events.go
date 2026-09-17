@@ -137,7 +137,11 @@ func newAgentEventPayloadWithTurnIDAndEvidence(
 	payload := AgentEventPayload{
 		AgentExecutionID:   execution.ID,
 		AttemptID:          execution.currentStartupAttemptID(),
+		OwnerKind:          executionOwnerKind(execution),
+		WorkspaceID:        execution.WorkspaceID,
 		RunID:              execution.RunID,
+		RunSessionID:       execution.RunSessionID,
+		RunAttempt:         execution.RunAttempt,
 		TaskID:             execution.TaskID,
 		SessionID:          execution.SessionID,
 		TaskEnvironmentID:  execution.TaskEnvironmentID,
@@ -182,6 +186,11 @@ func (p *EventPublisher) PublishAgentctlEvent(ctx context.Context, eventType str
 	}
 
 	payload := AgentctlEventPayload{
+		OwnerKind:         executionOwnerKind(execution),
+		WorkspaceID:       execution.WorkspaceID,
+		RunID:             execution.RunID,
+		RunSessionID:      execution.RunSessionID,
+		RunAttempt:        execution.RunAttempt,
 		TaskID:            execution.TaskID,
 		SessionID:         execution.SessionID,
 		TaskEnvironmentID: execution.TaskEnvironmentID,
@@ -275,7 +284,13 @@ func (p *EventPublisher) publishAgentStreamEventWithAttempt(
 		AgentID:        execution.ID,
 		ExecutionID:    execution.ID,
 		AttemptID:      attemptID,
+		OwnerKind:      executionOwnerKind(execution),
+		WorkspaceID:    execution.WorkspaceID,
+		RunID:          execution.RunID,
+		RunSessionID:   execution.RunSessionID,
+		RunAttempt:     execution.RunAttempt,
 		AgentProfileID: execution.officeProfileID(),
+		AgentType:      execution.AgentID,
 		TaskID:         execution.TaskID,
 		SessionID:      execution.SessionID,
 		Data:           eventData,

@@ -35,12 +35,42 @@ type facade struct {
 // multi-repo specs, attachments) reach the runtime in Phase 1 without
 // canonicalising them onto LaunchSpec yet.
 func (f *facade) Launch(ctx context.Context, spec LaunchSpec) (ExecutionRef, error) {
+	if spec.Owner.Kind != "" {
+		if spec.OwnerAdmission == nil {
+			return ExecutionRef{}, fmt.Errorf("execution owner %q has no admission provider", spec.Owner.Kind)
+		}
+		if err := spec.OwnerAdmission.AdmitExecution(ctx, spec.Owner); err != nil {
+			return ExecutionRef{}, err
+		}
+	}
 	req := launchRequestFromSpec(spec)
 	exec, err := f.backend.Launch(ctx, req)
 	if err != nil {
 		return ExecutionRef{}, err
 	}
 	return executionRefFromAgentExecution(exec), nil
+}
+
+// Start launches and starts an execution. The lifecycle manager owns initial
+// prompt delivery because it already coordinates ACP session initialization;
+// the facade only provides the atomic launch/start envelope and rolls back a
+// registered execution when startup fails.
+func (f *facade) Start(ctx context.Context, spec LaunchSpec) (ExecutionRef, error) {
+	ref, err := f.Launch(ctx, spec)
+	if err != nil {
+		return ExecutionRef{}, err
+	}
+	if spec.Owner.Kind != "" {
+		if err := spec.OwnerAdmission.AdmitExecution(ctx, spec.Owner); err != nil {
+			cleanupErr := f.Stop(context.WithoutCancel(ctx), ref.ID, "runtime_start_admission_failed")
+			return ExecutionRef{}, errors.Join(err, cleanupErr)
+		}
+	}
+	if err := f.backend.StartAgentProcess(ctx, ref.ID); err != nil {
+		cleanupErr := f.Stop(context.WithoutCancel(ctx), ref.ID, "runtime_start_failed")
+		return ExecutionRef{}, errors.Join(err, cleanupErr)
+	}
+	return ref, nil
 }
 
 // Resume sends a follow-up prompt to an existing execution. Attachments
@@ -131,6 +161,10 @@ func launchRequestFromSpec(spec LaunchSpec) *lifecycle.LaunchRequest {
 	if spec.McpMode != "" {
 		req.McpMode = spec.McpMode
 	}
+	if spec.Owner.Kind != "" {
+		req.Owner = spec.Owner
+		req.OwnerAdmission = spec.OwnerAdmission
+	}
 	if len(spec.Metadata) > 0 {
 		if req.Metadata == nil {
 			req.Metadata = map[string]interface{}{}
@@ -174,6 +208,7 @@ func executionFromAgentExecution(exec *lifecycle.AgentExecution) *Execution {
 		ExitCode:       exec.ExitCode,
 		ErrorMessage:   exec.ErrorMessage,
 		ACPSessionID:   exec.ACPSessionID,
+		Owner:          exec.OwnerSnapshot(),
 		Metadata:       exec.MetadataSnapshot(),
 	}
 	return out

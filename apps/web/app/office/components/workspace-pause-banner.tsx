@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
 import { Badge } from "@kandev/ui/badge";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@kandev/ui/drawer";
 import { useAppStore } from "@/components/state-provider";
 import {
   useWorkspacePause,
@@ -39,19 +41,27 @@ function RefreshPauseStateButton({
 // time, plus a resume control. Rendered whenever a record is present, even
 // while `status` is `unknown` (marked stale) — a pause already read stays on
 // screen per the design's "Frontend state" GET-failure rule.
+export type WorkspacePauseViewProps = {
+  activeWorkspaceId: string | null;
+  record: WorkspacePauseRecord | null;
+  status: ReturnType<typeof useWorkspacePause>["status"];
+  refresh: () => Promise<void>;
+  pause: UseWorkspacePauseResult["pause"];
+  retryPause: UseWorkspacePauseResult["retryPause"];
+  resume: UseWorkspacePauseResult["resume"];
+  sweep: UseWorkspacePauseResult["sweep"];
+  isMutating: boolean;
+};
+
 function PausedBanner({
   record,
   stale,
-  onRefresh,
-  onResume,
   sweep,
   onRetryPause,
   isMutating,
 }: {
   record: WorkspacePauseRecord;
   stale: boolean;
-  onRefresh: () => Promise<void>;
-  onResume: UseWorkspacePauseResult["resume"];
   sweep: UseWorkspacePauseResult["sweep"];
   onRetryPause: UseWorkspacePauseResult["retryPause"];
   isMutating: boolean;
@@ -94,10 +104,6 @@ function PausedBanner({
           </div>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <RefreshPauseStateButton onRefresh={onRefresh} testId="office-pause-refresh-paused" />
-        <ResumeWorkspaceButton onResume={onResume} />
-      </div>
     </div>
   );
 }
@@ -105,13 +111,7 @@ function PausedBanner({
 // AC-OFFICE-KILL-SWITCH-006.4's "Frontend state" unknown-with-no-record case:
 // the absence of a banner must never be read as "running", so an explicit
 // affordance is shown instead. The pause control stays reachable here too.
-function PauseStateUnavailableBar({
-  onRefresh,
-  onPause,
-}: {
-  onRefresh: () => Promise<void>;
-  onPause: UseWorkspacePauseResult["pause"];
-}) {
+function PauseStateUnavailableBar() {
   const { t } = useTranslation();
   return (
     <div
@@ -120,30 +120,80 @@ function PauseStateUnavailableBar({
     >
       <IconAlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
       <span className="min-w-0 flex-1">{t("office:pauseStateUnavailable")}</span>
-      <div className="flex shrink-0 items-center gap-2">
-        <RefreshPauseStateButton onRefresh={onRefresh} testId="office-pause-refresh-unavailable" />
-        <PauseWorkspaceButton onPause={onPause} />
-      </div>
     </div>
   );
 }
 
-// Not paused, and pause state is known: only the always-reachable pause
-// control plus a refresh, per AC-OFFICE-KILL-SWITCH-006.12/-006.13. No full
-// banner — a persistent indicator is only required while paused.
-function RunningControlBar({
-  onRefresh,
-  onPause,
-}: {
-  onRefresh: () => Promise<void>;
-  onPause: UseWorkspacePauseResult["pause"];
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2" data-testid="office-workspace-running-bar">
-      <RefreshPauseStateButton onRefresh={onRefresh} testId="office-pause-refresh-running" />
-      <PauseWorkspaceButton onPause={onPause} />
+function WorkspacePauseActions({ view }: { view: WorkspacePauseViewProps }) {
+  const { t } = useTranslation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  if (!view.activeWorkspaceId) return null;
+  const controls = (
+    <div className="flex flex-wrap items-center gap-2">
+      <RefreshPauseStateButton onRefresh={view.refresh} testId="office-pause-refresh-topbar" />
+      {view.record ? (
+        <ResumeWorkspaceButton onResume={view.resume} />
+      ) : (
+        <PauseWorkspaceButton onPause={view.pause} />
+      )}
     </div>
   );
+  return (
+    <>
+      <div
+        className="hidden items-center gap-2 md:flex"
+        data-testid="office-workspace-topbar-actions"
+      >
+        {controls}
+      </div>
+      <div className="md:hidden">
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <DrawerTrigger asChild>
+            <Button
+              variant="ghost"
+              className="min-h-11 min-w-11 cursor-pointer px-2"
+              aria-label={t("office:workspaceActions")}
+              data-testid="office-workspace-actions-trigger"
+            >
+              <IconAdjustmentsHorizontal className="h-4 w-4" />
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent data-testid="office-workspace-actions-drawer">
+            <DrawerHeader>
+              <DrawerTitle>{t("office:workspaceActions")}</DrawerTitle>
+            </DrawerHeader>
+            <div
+              className="flex flex-col gap-2 px-4 pb-6 [&_button]:min-h-11"
+              onClick={() => setDrawerOpen(false)}
+            >
+              {controls}
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </div>
+    </>
+  );
+}
+
+export function WorkspacePauseTopbarActions({ view }: { view: WorkspacePauseViewProps }) {
+  return <WorkspacePauseActions view={view} />;
+}
+
+export function WorkspacePauseState({ view }: { view: WorkspacePauseViewProps }) {
+  if (!view.activeWorkspaceId) return null;
+  if (view.record) {
+    return (
+      <PausedBanner
+        record={view.record}
+        stale={view.status === "unknown"}
+        sweep={view.sweep}
+        onRetryPause={view.retryPause}
+        isMutating={view.isMutating}
+      />
+    );
+  }
+  if (view.status === "unknown") return <PauseStateUnavailableBar />;
+  return null;
 }
 
 /**
@@ -156,26 +206,19 @@ export function WorkspacePauseBanner() {
   const activeWorkspaceId = useAppStore((s) => s.workspaces.activeId);
   const { record, status, refresh, pause, retryPause, resume, sweep, isMutating } =
     useWorkspacePause(activeWorkspaceId);
-
-  if (!activeWorkspaceId) return null;
-
-  if (record) {
-    return (
-      <PausedBanner
-        record={record}
-        stale={status === "unknown"}
-        onRefresh={refresh}
-        onResume={resume}
-        sweep={sweep}
-        onRetryPause={retryPause}
-        isMutating={isMutating}
-      />
-    );
-  }
-
-  if (status === "unknown") {
-    return <PauseStateUnavailableBar onRefresh={refresh} onPause={pause} />;
-  }
-
-  return <RunningControlBar onRefresh={refresh} onPause={pause} />;
+  return (
+    <WorkspacePauseState
+      view={{
+        activeWorkspaceId,
+        record,
+        status,
+        refresh,
+        pause,
+        retryPause,
+        resume,
+        sweep,
+        isMutating,
+      }}
+    />
+  );
 }

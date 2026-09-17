@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 
@@ -56,7 +57,9 @@ func (h *Handler) refuseIfConfigSyncActive(c *gin.Context, workspaceID string) b
 // RegisterRoutes registers all config HTTP routes on the given router group.
 func RegisterRoutes(api *gin.RouterGroup, h *Handler) {
 	api.GET("/workspaces/:wsId/config/export", h.exportConfig)
+	api.GET("/workspaces/:wsId/config/export/manifest", h.exportConfigManifest)
 	api.GET("/workspaces/:wsId/config/export/zip", h.exportConfigZip)
+	api.POST("/workspaces/:wsId/config/export/zip", h.exportSelectedConfigZip)
 	api.POST("/workspaces/:wsId/config/preview", h.previewImport)
 	api.POST("/workspaces/:wsId/config/import", h.applyImport)
 	api.GET("/workspaces/:wsId/config/sync/incoming", h.syncIncomingDiff)
@@ -74,6 +77,15 @@ func (h *Handler) exportConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"bundle": bundle})
 }
 
+func (h *Handler) exportConfigManifest(c *gin.Context) {
+	manifest, err := h.svc.ExportManifest(c.Request.Context(), c.Param("wsId"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, manifest)
+}
+
 func (h *Handler) exportConfigZip(c *gin.Context) {
 	reader, err := h.svc.ExportZip(c.Request.Context(), c.Param("wsId"))
 	if err != nil {
@@ -82,6 +94,32 @@ func (h *Handler) exportConfigZip(c *gin.Context) {
 	}
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", "attachment; filename=kandev-config.zip")
+	c.Status(http.StatusOK)
+	_, _ = io.Copy(c.Writer, reader)
+}
+
+func (h *Handler) exportSelectedConfigZip(c *gin.Context) {
+	var request struct {
+		Revision string   `json:"revision"`
+		Paths    []string `json:"paths"`
+	}
+	if err := json.NewDecoder(c.Request.Body).Decode(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	reader, err := h.svc.ExportSelectedZip(c.Request.Context(), c.Param("wsId"), request.Revision, request.Paths)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == ErrExportRevisionConflict {
+			status = http.StatusConflict
+		} else if err == ErrInvalidExportSelection {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", "attachment; filename=kandev-config-selected.zip")
 	c.Status(http.StatusOK)
 	_, _ = io.Copy(c.Writer, reader)
 }

@@ -289,12 +289,29 @@ func TestGetRunDetail_HappyPathWithCosts(t *testing.T) {
 	if len(resp.TasksTouched) != 1 || resp.TasksTouched[0] != "task-1" {
 		t.Errorf("want primary task in tasks_touched, got %v", resp.TasksTouched)
 	}
-	// After ADR 0005 the agent profile id IS the agent instance id, so
-	// the adapter slug surfaced in the invocation panel matches the agent
-	// row id directly. The legacy "office instance → shallow profile"
-	// indirection is gone.
-	if resp.Invocation.Adapter != "agent-1" {
-		t.Errorf("adapter mismatch: %q", resp.Invocation.Adapter)
+	if resp.Invocation.Adapter != "" {
+		t.Errorf("unrecorded adapter should stay empty, got %q", resp.Invocation.Adapter)
+	}
+	if resp.AgentName != "Agent" {
+		t.Errorf("agent name = %q, want Agent", resp.AgentName)
+	}
+}
+
+func TestGetRunDetailActualInvocation(t *testing.T) {
+	deps := newRunDetailDeps(t)
+	seedRunDetailAgent(t, deps, "agent-1", "ignored")
+	ctx := context.Background()
+	runID := seedRunDetailRun(t, deps, "agent-1", "finished", "task-1", time.Now().UTC())
+	if err := deps.repo.SetRunResolvedRoute(ctx, runID, "profile-1", "codex", "gpt-5"); err != nil {
+		t.Fatalf("set resolved route: %v", err)
+	}
+
+	resp, err := dashboard.GetRunDetail(ctx, deps.repo, "agent-1", runID)
+	if err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	if resp.Invocation.Adapter != "codex" || resp.Invocation.Model != "gpt-5" {
+		t.Fatalf("invocation = %+v, want recorded provider/model", resp.Invocation)
 	}
 }
 

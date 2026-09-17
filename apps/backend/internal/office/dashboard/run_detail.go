@@ -29,6 +29,10 @@ type RunDetailRepo interface {
 	ListRouteAttempts(ctx context.Context, runID string) ([]models.RouteAttempt, error)
 }
 
+type runSessionReader interface {
+	GetRunSession(ctx context.Context, id string) (*models.RunSession, error)
+}
+
 // ErrRunNotFound is returned when GetRunDetail can't find the run id.
 var ErrRunNotFound = errors.New("run not found")
 
@@ -251,8 +255,12 @@ func GetRunDetail(
 		}
 	}
 
-	invocation := buildInvocation(ctx, repo, run)
-	sessionDTO := RunSessionDTO{SessionID: sessionIDFromPayload(run.Payload)}
+	invocation, agentName := buildInvocation(ctx, repo, run)
+	sessionID := run.SessionID
+	if sessionID == "" {
+		sessionID = sessionIDFromPayload(run.Payload)
+	}
+	sessionDTO := RunSessionDTO{SessionID: sessionID}
 	runtimeDTO, err := buildRuntimeDTO(ctx, repo, run)
 	if err != nil {
 		return nil, err
@@ -262,6 +270,7 @@ func GetRunDetail(
 		ID:           run.ID,
 		IDShort:      shortID(run.ID),
 		AgentID:      run.AgentProfileID,
+		AgentName:    agentName,
 		Reason:       run.Reason,
 		Status:       string(run.Status),
 		ErrorMessage: run.ErrorMessage,
@@ -382,6 +391,9 @@ func buildRuntimeDTO(ctx context.Context, repo RunDetailRepo, run *models.Run) (
 	for _, snap := range snapshots {
 		skills = append(skills, RunSkillDTO{
 			SkillID:          snap.SkillID,
+			DisplayName:      snap.DisplayName,
+			Slug:             snap.Slug,
+			LabelSource:      snap.LabelSource,
 			Version:          snap.Version,
 			ContentHash:      snap.ContentHash,
 			MaterializedPath: snap.MaterializedPath,
@@ -436,27 +448,38 @@ func mergeTaskIDs(touched []string, primary string) []string {
 	return out
 }
 
-// buildInvocation populates the invocation panel best-effort from
-// the agent instance + run payload. The agent profile carries the
-// adapter family and model; the working directory is workspace-
-// relative for now (orchestrator logs will fill in the rest in a
-// later wave). Missing fields stay empty so the frontend can hide
-// them gracefully.
+// buildInvocation uses the persisted launch snapshot. It never infers an
+// adapter from the database row id: provider-routing and run-owned sessions
+// record the concrete invocation that actually launched.
 func buildInvocation(
 	ctx context.Context,
 	repo RunDetailRepo,
 	run *models.Run,
-) RunInvocationDTO {
+) (RunInvocationDTO, string) {
 	dto := RunInvocationDTO{}
+	if run.ResolvedProviderID != nil {
+		dto.Adapter = *run.ResolvedProviderID
+	}
+	if run.ResolvedModel != nil {
+		dto.Model = *run.ResolvedModel
+	}
+	sessionID := run.SessionID
+	if sessionID == "" {
+		sessionID = sessionIDFromPayload(run.Payload)
+	}
+	if reader, ok := repo.(runSessionReader); ok && sessionID != "" {
+		if session, err := reader.GetRunSession(ctx, sessionID); err == nil && session != nil {
+			if session.Adapter != "" {
+				dto.Adapter = session.Adapter
+			}
+			if session.Model != "" {
+				dto.Model = session.Model
+			}
+		}
+	}
 	agent, err := repo.GetAgentInstance(ctx, run.AgentProfileID)
 	if err != nil || agent == nil {
-		return dto
+		return dto, ""
 	}
-	// Wave G: AgentInstance.ID == agent_profiles.id under the unified model.
-	dto.Adapter = agent.ID
-	// Model lives on the agent profile, not the agent instance —
-	// surfacing it requires plumbing the profile reader through.
-	// Wave 2.E will fold the adapter+model lookup in; for v1 we
-	// surface what we have.
-	return dto
+	return dto, agent.Name
 }

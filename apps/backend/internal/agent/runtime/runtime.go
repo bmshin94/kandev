@@ -24,6 +24,20 @@ import (
 	v1 "github.com/kandev/kandev/pkg/api/v1"
 )
 
+// These aliases keep higher-level callers on the runtime seam while the
+// lifecycle package remains the implementation owner of the wire contracts.
+type ExecutionOwnerKind = lifecycle.ExecutionOwnerKind
+type ExecutionOwner = lifecycle.ExecutionOwner
+type OwnerAdmission = lifecycle.OwnerAdmission
+type LaunchRequest = lifecycle.LaunchRequest
+type RouteOverride = lifecycle.RouteOverride
+type AgentStreamEventPayload = lifecycle.AgentStreamEventPayload
+
+const (
+	ExecutionOwnerTask = lifecycle.ExecutionOwnerTask
+	ExecutionOwnerRun  = lifecycle.ExecutionOwnerRun
+)
+
 // Runtime is the public surface for launching, resuming, stopping, and
 // observing agent executions.
 //
@@ -32,6 +46,10 @@ type Runtime interface {
 	// Launch starts a new agent execution against the supplied spec and
 	// returns a reference to the execution.
 	Launch(ctx context.Context, spec LaunchSpec) (ExecutionRef, error)
+
+	// Start prepares the process for a newly launched execution and delivers
+	// the initial prompt exactly once through the lifecycle startup seam.
+	Start(ctx context.Context, spec LaunchSpec) (ExecutionRef, error)
 
 	// Resume sends a follow-up prompt to an existing execution.
 	Resume(ctx context.Context, executionID string, prompt string) error
@@ -60,6 +78,11 @@ type Runtime interface {
 // as a `*lifecycle.LaunchRequest` until later phases canonicalise them
 // onto LaunchSpec directly.
 type LaunchSpec struct {
+	// Owner and OwnerAdmission are optional for legacy task launches. Run-owned
+	// Office launches must provide both so admission remains strict.
+	Owner          lifecycle.ExecutionOwner
+	OwnerAdmission OwnerAdmission
+
 	// AgentProfileID identifies the agent profile to run (e.g. "claude-acp-default").
 	AgentProfileID string
 
@@ -123,6 +146,7 @@ type Execution struct {
 	ExitCode       *int
 	ErrorMessage   string
 	ACPSessionID   string
+	Owner          lifecycle.ExecutionOwner
 	Metadata       map[string]interface{}
 }
 
@@ -146,6 +170,7 @@ var ErrUnsupported = errors.New("runtime: operation not supported")
 // constructing a full lifecycle Manager.
 type Backend interface {
 	Launch(ctx context.Context, req *lifecycle.LaunchRequest) (*lifecycle.AgentExecution, error)
+	StartAgentProcess(ctx context.Context, executionID string) error
 	PromptAgent(ctx context.Context, executionID string, prompt string, attachments []v1.MessageAttachment, dispatchOnly bool) (*lifecycle.PromptResult, error)
 	StopAgentWithReason(ctx context.Context, executionID string, reason string, force bool) error
 	GetExecution(executionID string) (*lifecycle.AgentExecution, bool)

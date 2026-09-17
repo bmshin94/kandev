@@ -44,6 +44,7 @@ type Manager struct {
 	eventBus        bus.EventBus
 	credsMgr        CredentialsManager
 	profileResolver ProfileResolver
+	ownerAdmission  OwnerAdmission
 	worktreeMgr     *worktree.Manager
 	mcpProvider     McpConfigProvider
 	logger          *logger.Logger
@@ -283,6 +284,13 @@ type Manager struct {
 	activityLeaseOwners map[string]uint64
 	activityPending     map[string]map[uint64]*executionActivityClaim
 	activityGeneration  uint64
+}
+
+// SetOwnerAdmission wires the durable owner gate used by run-owned launches.
+// Task launches keep their existing task/session admission when no owner gate
+// is configured.
+func (m *Manager) SetOwnerAdmission(admission OwnerAdmission) {
+	m.ownerAdmission = admission
 }
 
 // ManagedGoCacheEnvironmentProvider supplies the environment for one new

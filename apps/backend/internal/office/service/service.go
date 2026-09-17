@@ -77,6 +77,39 @@ type TaskStarterWithLaunchContextSession interface {
 		launch LaunchContext) (sessionID string, err error)
 }
 
+// RunSessionLaunch is the durable identity returned by a run-owned runtime
+// launch. SessionID is the Office run-session ID, not a task_sessions row.
+type RunSessionLaunch struct {
+	SessionID          string
+	ExecutionID        string
+	ExecutionProfileID string
+	Adapter            string
+	Model              string
+	ACPSessionID       string
+}
+
+// RunSessionLauncher starts a run-owned execution without creating a task or
+// task session. A route is optional; when present it is the concrete provider
+// selection chosen by the routing dispatcher.
+type RunSessionLauncher interface {
+	StartRunSession(ctx context.Context, run *models.Run, agent *models.AgentInstance,
+		launch LaunchContext, route *RouteOverride) (RunSessionLaunch, error)
+}
+
+type RunSessionReconciler interface {
+	ReconcileRunSessions(ctx context.Context) error
+}
+
+// ReconcileRunSessions delegates startup recovery to the backend runtime
+// composition when taskless sessions are enabled.
+func (s *Service) ReconcileRunSessions(ctx context.Context) error {
+	reconciler, ok := s.runSessionLauncher.(RunSessionReconciler)
+	if !ok {
+		return nil
+	}
+	return reconciler.ReconcileRunSessions(ctx)
+}
+
 // LaunchContext mirrors scheduler.LaunchContext so the office.service
 // package can carry the Office-built launch context (prompt, env,
 // workflow step, attachments, plan-mode, profile) into the routing
@@ -95,6 +128,18 @@ type LaunchContext struct {
 	Env                  map[string]string
 	ProfileID            string
 	AdditionalSkillSlugs []string
+}
+
+// RouteOverride carries the provider-specific execution selection into either
+// the task starter or the run-session launcher.
+type RouteOverride struct {
+	ExecutionProfileID string
+	ProviderID         string
+	Model              string
+	Tier               string
+	Mode               string
+	Flags              []string
+	Env                map[string]string
 }
 
 // RoutingDispatcher is the seam the office scheduler integration uses to
@@ -328,6 +373,7 @@ type Service struct {
 	agentTypeResolver       AgentTypeResolver
 	projectSkillDirResolver ProjectSkillDirResolver
 	taskStarter             TaskStarter
+	runSessionLauncher      RunSessionLauncher
 	routingDispatcher       RoutingDispatcher
 	taskCanceller           TaskCanceller
 	taskWorkspace           TaskWorkspaceService
@@ -435,6 +481,19 @@ func (s *Service) SetAgentTokenMinter(minter AgentTokenMinter) {
 	s.agentTokenMinter = minter
 }
 
+// SetRunSessionLauncher wires the shared-runtime adapter for taskless Office
+// runs. Keeping this optional preserves isolated service tests and keeps the
+// scheduler fail-closed when startup composition is incomplete.
+func (s *Service) SetRunSessionLauncher(launcher RunSessionLauncher) {
+	s.runSessionLauncher = launcher
+}
+
+// RunSessionLauncherHandle returns the shared-runtime taskless launch seam so
+// the provider-routing scheduler can use the same implementation.
+func (s *Service) RunSessionLauncherHandle() RunSessionLauncher {
+	return s.runSessionLauncher
+}
+
 // SetRoutingDispatcher wires the provider-routing dispatcher (the office
 // scheduler.SchedulerService). When nil, the legacy concrete-profile
 // launch path runs unchanged.
@@ -481,8 +540,8 @@ func NewService(opts ServiceOptions) *Service {
 	log := opts.Logger.WithFields(zap.String("component", "office-service"))
 	if opts.TaskStarter == nil {
 		log.Warn("office service constructed without a TaskStarter; " +
-			"every run the scheduler claims will fail immediately " +
-			"instead of launching an agent (WO-35)")
+			"task-bound runs the scheduler claims will fail immediately " +
+			"instead of launching an agent")
 	}
 	svc := &Service{
 		repo:                    opts.Repo,
