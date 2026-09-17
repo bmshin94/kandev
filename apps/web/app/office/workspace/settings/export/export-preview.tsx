@@ -256,20 +256,20 @@ export function ExportPreview() {
 
   const handleExport = useCallback(async () => {
     if (!activeWorkspaceId || !revision || selectedCount === 0) return;
-	const requestWorkspaceId = activeWorkspaceId;
-	const requestGeneration = workspaceGeneration.current;
+    const requestWorkspaceId = activeWorkspaceId;
+    const requestGeneration = workspaceGeneration.current;
     setDownloadErrorKey(null);
     try {
       const blob = await officeApi.exportSelectedConfigZip(requestWorkspaceId, {
         revision,
         paths: [...selectedPaths],
       });
-	if (
-		workspaceGeneration.current !== requestGeneration ||
-		lastWorkspaceId.current !== requestWorkspaceId
-	) {
-		return;
-	}
+      if (
+        workspaceGeneration.current !== requestGeneration ||
+        lastWorkspaceId.current !== requestWorkspaceId
+      ) {
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
