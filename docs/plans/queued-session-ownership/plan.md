@@ -292,3 +292,11 @@ Implementation and available rendered verification on 2026-09-17:
 - Projection refreshes can accidentally count as user activity and reorder tasks.
 - Legacy ambiguous ownership must surface recovery without dispatch or data loss.
 - The unexplained warning must not cause blanket suppression of genuine empty turns.
+
+## Follow-up: Session-open recovery eligibility
+
+The [recovery eligibility repair](../session-open-recovery-eligibility/plan.md)
+owns the historical-stop and settled-deferral regressions found after restart.
+It extends the inspection and reuse matrix with separate and combined recovery
+cases on desktop and phone. Existing results and PostgreSQL prerequisites here
+remain unchanged. The follow-up work order is pending implementation.

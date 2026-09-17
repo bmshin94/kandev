@@ -58,6 +58,16 @@ destination entry, whereas a ceiling can delay a session already selected by ent
   established, passive inspection shall remain available without starting work
   or attempting a fresh-session fallback. Explicit recovery shall remain separately available.
 
+- **AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.7:** After a workflow legitimately
+  reuses a conversation, historical workflow stops shall not prevent its otherwise
+  eligible recovery after restart. Desktop and phone task opening shall honor
+  the existing auto-start preference and automatic capacity limit. Current
+  parking or pending launch ownership shall still prevent duplicate execution.
+- **AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.8:** After a deferred launch settles
+  and no pending launch remains, queue history shall not block otherwise eligible
+  open-time recovery. Recovery shall preserve the conversation and shall not
+  replay the settled workflow prompt.
+
 ### REQ-TASKS-QUEUED-SESSION-OWNERSHIP-002: Deferred work survives sibling lifecycle events
 
 **Intent:** A queued launch must remain owned and retryable until its own outcome is known.

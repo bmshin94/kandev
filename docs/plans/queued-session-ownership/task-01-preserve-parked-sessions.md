@@ -143,3 +143,11 @@ Passing checks:
 The PostgreSQL counterpart `TestPostgresWorkflowParking` is implemented, but
 the required command is blocked because `KANDEV_TEST_POSTGRES_DSN` is unset.
 The work order therefore remains in progress until that database check runs.
+
+## Follow-up: Session-open recovery eligibility
+
+The [recovery eligibility repair](../session-open-recovery-eligibility/plan.md)
+owns the historical-stop and settled-deferral regressions found after restart.
+It extends the inspection and reuse matrix with separate and combined recovery
+cases on desktop and phone. Existing results and PostgreSQL prerequisites here
+remain unchanged. The follow-up work order is pending implementation.

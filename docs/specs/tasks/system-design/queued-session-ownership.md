@@ -106,6 +106,54 @@ repository, with SQLite/PostgreSQL conformance coverage. No new state enum or
 database column is required. Tests must include parking without a runtime,
 consumed tombstones, later reuse, explicit follow-up, restart, and stale clears.
 
+## Recovery after reuse and queue settlement
+
+The [auto-resume repair package](../../../plans/session-open-recovery-eligibility/plan.md)
+clarifies the existing inspection contract for AC 001.7 and 001.8.
+`autoResumeEligibility` remains the common decision for status and passive launch.
+The correction needs no schema migration or metadata cleanup on the live instance.
+
+Evaluate current `workflow_parking` first. A valid marker still blocks recovery;
+a malformed non-null marker still fails closed. A consumed stop-intent tombstone
+alone does not establish current parking. Keep that tombstone unchanged for
+execution-correlated delayed callbacks.
+
+For the historical-stop exception, require all of these conditions:
+
+- The stop intent is valid and consumed.
+- The session belongs to the task and is its primary session.
+- The recorded route is committed and has nonempty operation and entry identities.
+- Its destination is this session, its destination step is the current task step,
+  and its agent profile matches the session profile.
+- No current parking marker remains.
+
+This exact committed destination resolves the legacy ambiguity. Primary status
+alone, a prepared route, an unrelated route, or `consumed: true` alone does not.
+An unconsumed intent retains conservative suppression. A non-primary source
+still follows the existing parked-predecessor rule. Other ambiguous cases keep
+`ownership_unavailable`; this change does not guess ownership from timestamps.
+
+After historical-stop classification, continue through deferred-launch checks.
+Do not return allowed early for the committed destination: it can still own a
+real queued launch. An absent, null, or empty object `deferred_launch` has no
+pending work. `stripCeilingRecordKeys` deliberately leaves an empty object after
+settlement because the conditional writer rejects nil. Interpret that existing
+representation without weakening `ReadCeilingDeferral` for replay consumers.
+Nonempty records retain current validation and suppression, including malformed
+records and records belonging to another admission mechanism.
+
+Status inspection remains read-only. Passive launch must recheck the same
+predicate at its existing guarded admission boundary. A later park, route change,
+or queued successor must defeat an earlier allowed status response. Preserve the
+lock order and claim fences described below; no runtime call occurs under task
+admission. Explicit execution and delayed-callback handling retain their contracts.
+
+The browser already uses `auto_resume_allowed` before requesting recovery.
+No new layout, copy, status field, or fallback is required. Desktop and phone
+use the existing recovery hook, session selection, and preference. Restoring a
+provider conversation does not replay an interrupted or settled workflow prompt.
+Tests cover each blocker separately, their combination, and restrictive controls.
+
 ## Deferred entry ownership
 
 Extend workflow-origin deferred payloads with a nested entry binding containing
