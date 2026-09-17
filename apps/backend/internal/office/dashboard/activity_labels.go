@@ -10,8 +10,6 @@ import (
 // Activity rows are intentionally not joined one-by-one: the feed is a hot
 // read path and historical identifiers must remain useful when a target was
 // later removed.
-//
-//nolint:cyclop // Label enrichment intentionally handles optional bounded lookups and fallbacks.
 func (s *DashboardService) enrichActivityLabels(
 	ctx context.Context,
 	workspaceID string,

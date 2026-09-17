@@ -17,8 +17,6 @@ import (
 // (run_id, attempt) is a lost reservation and leaves the predecessor row
 // untouched. A later attempt may coexist with the predecessor, but never
 // overwrites its durable identity.
-//
-//nolint:cyclop // Reservation keeps transaction, CAS, and rollback handling together.
 func (r *Repository) ReserveRunSession(ctx context.Context, session *models.RunSession) (bool, error) {
 	if err := validateRunSessionReservation(session); err != nil {
 		return false, err

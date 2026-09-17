@@ -244,10 +244,11 @@ func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) err
 		}
 		state := models.RunSessionStateInterrupted
 		message := "runtime execution ended during restart"
-		if execution.Status == v1.AgentStatusCompleted {
+		switch execution.Status {
+		case v1.AgentStatusCompleted:
 			state = models.RunSessionStateFinished
 			message = ""
-		} else if execution.Status == v1.AgentStatusFailed {
+		case v1.AgentStatusFailed:
 			state = models.RunSessionStateFailed
 			message = execution.ErrorMessage
 		}
