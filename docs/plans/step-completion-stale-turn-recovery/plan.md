@@ -1,6 +1,6 @@
 ---
 created: 2026-09-18
-status: draft
+status: done
 requirements:
   - REQ-TASKS-WORKFLOW-EXPLICIT-COMPLETION-SIGNAL-003
 system_design:
@@ -95,7 +95,7 @@ Automated text tests do not prove that every model obeys recovery instructions.
 
 ## Work orders
 
-- [ ] [Task 01: expose safe completion recovery](task-01-completion-recovery.md)
+- [x] [Task 01: expose safe completion recovery](task-01-completion-recovery.md)
 
 ## Verification results
 
@@ -114,7 +114,22 @@ Package validation passed:
 - `git status --short -- docs/plans/step-completion-stale-turn-recovery`: both package files present.
 
 Issue #3772 was assigned to `carlosflorencio` during investigation.
-Implementation and new regression tests remain pending.
+
+Implementation completed:
+
+- Added launch-step and current-step IDs plus fresh-turn recovery guidance to
+  stale completion errors while preserving validation and signal-claim guards.
+- Updated MCP tool metadata, signal-gated task and Office prompts, and public
+  task/MCP reference pages with the same recovery sequence.
+- Added SQLite handler, MCP forwarding, prompt, and metadata regressions.
+- `go test ./internal/mcp/handlers -run 'TestHandleStepComplete_' -count=1`
+  passed.
+- `go test ./internal/mcp/server -count=1` and `go test ./internal/sysprompt
+  -count=1` passed.
+- `go test -race ./internal/mcp/handlers -run 'TestHandleStepComplete_' -count=1`
+  passed.
+- Public-doc validators, specification catalog/lint checks, `git diff --check`,
+  and `make -C apps/backend build` passed.
 
 ## Risks
 

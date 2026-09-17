@@ -1,7 +1,7 @@
 ---
 id: "01-completion-recovery"
 title: "Expose safe completion recovery"
-status: pending
+status: done
 wave: 1
 depends_on: []
 plan: "plan.md"
@@ -74,7 +74,7 @@ git diff --check
 
 ## Dependencies
 
-None. Implementation requires a later explicit implementation request.
+None. Implementation completed in this work order after the explicit implementation request.
 
 ## Risks
 
@@ -97,4 +97,8 @@ Do not add a backend side effect to make the text recovery test pass.
 
 ## Results
 
-Pending. No production code or permanent tests changed during planning.
+Completed. The stale-turn rejection now includes both step IDs and directs the
+agent to end the stale turn and have the user resume the session. A fresh turn
+stamped with the current step can signal normally. MCP forwarding, tool
+metadata, task and Office prompts, public docs, and the existing stale-turn,
+duplicate, concurrency, and prompt-size coverage remain aligned.

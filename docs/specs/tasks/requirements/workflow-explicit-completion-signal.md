@@ -57,7 +57,7 @@ when the agent did not emit its completion signal.
 
 ### REQ-TASKS-WORKFLOW-EXPLICIT-COMPLETION-SIGNAL-003: Recovery after a step change
 
-**Status:** Proposed addition for issue #3772.
+**Status:** shipped.
 
 **Intent:** A caller can distinguish a stale completion attempt from a duplicate
 signal and recover without completing the wrong step.
