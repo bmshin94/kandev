@@ -28,11 +28,11 @@ async function assertMobileCatchUpPolicyToggles(page: Page) {
   await expect(catchUpMax).toHaveValue("42");
 
   await catchUpPolicyCombobox(page).tap();
-  await page.getByRole("option", { name: "Skip missed" }).tap();
+  await page.getByRole("option", { name: "Skip missed", exact: true }).tap();
   await expect(page.getByText("Catch-up max", { exact: true })).toHaveCount(0);
 
   await catchUpPolicyCombobox(page).tap();
-  await page.getByRole("option", { name: SUMMARIZE_MISSED_LABEL }).tap();
+  await page.getByRole("option", { name: SUMMARIZE_MISSED_LABEL, exact: true }).tap();
   await expect(catchUpMaxInput(page)).toHaveValue("42");
   await expect(page.getByText(RETIRED_LABEL)).toHaveCount(0);
 }
@@ -47,7 +47,7 @@ test.describe("Mobile routine catch-up policy control", () => {
 
     await testPage.getByLabel("Name").fill("E2E Mobile Catch-up Dialog");
     await testPage.getByText("Assignee", { exact: true }).locator("..").getByRole("combobox").tap();
-    await testPage.getByRole("option", { name: "CEO" }).tap();
+    await testPage.getByRole("option", { name: "CEO", exact: true }).tap();
     await testPage.getByRole("button", { name: "Next" }).tap();
     await testPage.getByRole("button", { name: "Next" }).tap();
 
@@ -72,7 +72,9 @@ test.describe("Mobile routine catch-up policy control", () => {
     expect(routine.id).toBeTruthy();
 
     await testPage.goto(`/office/routines/${routine.id}`);
-    await expect(testPage.getByText("E2E Mobile Catch-up Detail Toggle")).toBeVisible({
+    await expect(
+      testPage.getByTestId("office-topbar").getByText("E2E Mobile Catch-up Detail Toggle").last(),
+    ).toBeVisible({
       timeout: 10_000,
     });
 

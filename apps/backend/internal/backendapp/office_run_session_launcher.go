@@ -39,7 +39,7 @@ func newOfficeRunSessionLauncher(
 	}
 }
 
-//nolint:cyclop // The launch sequence keeps reservation, identity binding, admission, and cleanup together.
+//nolint:cyclop,funlen // The launch sequence keeps reservation, identity binding, admission, and cleanup together.
 func (l *officeRunSessionLauncher) StartRunSession(
 	ctx context.Context,
 	run *models.Run,
@@ -211,7 +211,7 @@ func (l *officeRunSessionLauncher) StartRunSession(
 // scheduler can claim work. A replacement is allowed only after the exact
 // predecessor is proven absent or terminal.
 //
-//nolint:gocognit // Recovery must handle each durable predecessor state before replacement.
+//nolint:cyclop,gocognit // Recovery must handle each durable predecessor state before replacement.
 func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) error {
 	sessions, err := l.repo.ListUnfinishedRunSessions(ctx)
 	if err != nil {

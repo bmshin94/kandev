@@ -44,8 +44,9 @@ Other confirmed causes:
 
 - `dashboard/run_detail.go:buildInvocation` assigns agent.ID as adapter.
 - RuntimePanel prints skill_id; ActivityRow prints actorId and targetId.
-- OfficeShell mounts WorkspacePauseBanner under PageShell; its running branch
-  owns a second row. Refresh reads pause state only.
+- OfficeShell mounts WorkspacePauseState under PageShell; paused, stale and
+  unavailable branches own the conditional second row. Refresh reads pause
+  state only.
 - OFFICE_ROUTES omits the existing export page. Both export endpoints returned
   200 and a 34-entry ZIP passed integrity checks. Selection is ignored by download;
   frontend preview independently serializes YAML and omits the ZIP path prefix.

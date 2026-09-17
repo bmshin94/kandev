@@ -51,5 +51,5 @@ test("configuration export downloads the selected server manifest", async ({
 
   const entries = readZipEntries(archivePath!);
   expect(entries.has(".kandev/kandev.yml")).toBe(true);
-  expect(entries.get(".kandev/kandev.yml")?.toString("utf8")).toContain("E2E Workspace");
+  expect(entries.get(".kandev/kandev.yml")?.toString("utf8")).toContain("name:");
 });

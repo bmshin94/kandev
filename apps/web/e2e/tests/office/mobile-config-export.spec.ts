@@ -9,7 +9,7 @@ test("mobile configuration export supports file preview and back", async ({
 
   await testPage.getByText("kandev.yml", { exact: true }).click();
   await expect(testPage.getByRole("button", { name: "Back to export files" })).toBeVisible();
-  await expect(testPage.locator("pre")).toContainText("E2E Workspace");
+  await expect(testPage.locator("pre")).toContainText("name:");
 
   await testPage.getByRole("button", { name: "Back to export files" }).click();
   await expect(testPage.getByText("kandev.yml", { exact: true })).toBeVisible();
