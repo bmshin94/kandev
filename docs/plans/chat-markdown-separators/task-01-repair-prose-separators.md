@@ -145,13 +145,14 @@ viewport checks document overflow.
 Verification from the repository root:
 
 - Dependencies were already installed in the worktree, so the conditional install step was not needed.
-- Focused Vitest compatibility suite: passed, 3 files and 94 tests.
+- Focused Vitest compatibility suite: passed, 3 files and 96 tests.
 - Targeted ESLint: passed with no warnings.
 - TypeScript typecheck: passed.
 - Vite production build: passed with existing chunk-size and ineffective dynamic-import warnings.
 - Desktop Chromium E2E: passed, 2 tests.
 - Mobile Chromium E2E: passed, 1 test.
 - Follow-up review regressions: passed for mixed fence markers, container-boundary recovery, HTML termination classes, and list-owned tilde fences.
+- Follow-up review fixup also covers arbitrary/basic HTML tags, exact front-matter opening, loose-list recovery after a blank, and lone-CR separator repair.
 - `python3 scripts/list-docs.py validate`: passed.
 - `python3 scripts/lint-spec-files.test.py`: passed, 36 tests.
 - `python3 scripts/lint-spec-files.py --all`: passed.

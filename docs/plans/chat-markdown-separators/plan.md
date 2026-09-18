@@ -190,6 +190,7 @@ Documentation checks on 2026-09-17:
 Implementation and TDD checks:
 
 - `pnpm exec vitest run lib/markdown/normalize-separators.test.ts lib/markdown/normalize-cache.test.ts components/shared/markdown-components.test.tsx`: passed, 3 files and 94 tests.
+- Follow-up review fixup: the same focused suite passed, 3 files and 96 tests, including homogeneous mixed-fence literals, block-boundary recovery, HTML termination classes, loose-list ownership, exact front-matter opening, and lone-CR preservation.
 - Targeted ESLint: passed with no warnings.
 - `pnpm run typecheck`: passed.
 - `pnpm run build:vite`: passed. Existing chunk-size and ineffective dynamic-import warnings remain.

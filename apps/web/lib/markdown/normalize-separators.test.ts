@@ -156,6 +156,7 @@ describe("normalizeMarkdown protected separator contexts", () => {
   it("@covers AC-UI-COMMENT-MARKDOWN-002.3 and .5 preserves mixed fence markers", () => {
     const cases = [
       ["backtick fence", ["```text", "`~~", LONG_PROSE, "---", "```"].join("\n")],
+      ["backtick info string", ["```~text", LONG_PROSE, "---", "```"].join("\n")],
       ["tilde fence", ["~~~text", "~``", LONG_PROSE, "---", "~~~"].join("\n")],
     ] as const;
 
@@ -195,21 +196,38 @@ describe("normalizeMarkdown protected separator contexts", () => {
       ],
       [`- item\n---\n${LONG_PROSE}\n---`, `- item\n---\n${LONG_PROSE}\n\n---`],
       [`> item\n---\n${LONG_PROSE}\n---`, `> item\n---\n${LONG_PROSE}\n\n---`],
+      [
+        `> ~~~text\n> literal\n> ~~~\n${LONG_PROSE}\n---`,
+        `> ~~~text\n> literal\n> ~~~\n${LONG_PROSE}\n\n---`,
+      ],
+      [`- item\n\n${LONG_PROSE}\n---`, `- item\n\n${LONG_PROSE}\n\n---`],
     ] as const;
 
     for (const [input, expected] of cases) expect(normalizeMarkdown(input)).toBe(expected);
   });
+});
 
+describe("normalizeMarkdown protected HTML and list contexts", () => {
   it("@covers AC-UI-COMMENT-MARKDOWN-002.3 and .4 applies HTML block termination rules", () => {
     const afterBasicBlocks = [
       [`<hr>\n\n${LONG_PROSE}\n---`, `<hr>\n\n${LONG_PROSE}\n\n---`],
       [`<div>\n\n${LONG_PROSE}\n---`, `<div>\n\n${LONG_PROSE}\n\n---`],
+      [`<pre>literal</pre>\n${LONG_PROSE}\n---`, `<pre>literal</pre>\n${LONG_PROSE}\n\n---`],
     ] as const;
     for (const [input, expected] of afterBasicBlocks)
       expect(normalizeMarkdown(input)).toBe(expected);
 
     const basicUntilBlank = `<div>\n${LONG_PROSE}\n</div>\n${LONG_PROSE}\n---`;
     expect(normalizeMarkdown(basicUntilBlank)).toBe(basicUntilBlank);
+
+    const completeHtmlBlocks = [
+      `<custom-element>\n${LONG_PROSE}\n---`,
+      `</div>\n${LONG_PROSE}\n---`,
+      `<div></div>\n${LONG_PROSE}\n---`,
+      `<?instruction\n${LONG_PROSE}\n---\n?>`,
+      `<!DOCTYPE\n${LONG_PROSE}\n---\n>`,
+    ];
+    for (const input of completeHtmlBlocks) expect(normalizeMarkdown(input)).toBe(input);
 
     const rawAndComment = [
       [
@@ -238,25 +256,41 @@ describe("normalizeMarkdown protected separator contexts", () => {
     expect(countTag(rendered, "hr")).toBe(0);
   });
 
+  it("@covers AC-UI-COMMENT-MARKDOWN-002.3 preserves loose-list ownership after a blank", () => {
+    const input = ["- item", "", `  ${LONG_PROSE}`, "  ---"].join("\n");
+
+    expect(normalizeMarkdown(input)).toBe(input);
+  });
+
   it("@covers AC-UI-COMMENT-MARKDOWN-002.4 preserves existing rule forms and front matter", () => {
     const long = proseWithLength(70);
+    const rule = "---";
+    const frontMatterTitle = "title: example";
     const unchanged = [
-      `${long}\n\n---`,
+      `${long}\n\n${rule}`,
       `${long}\n===`,
       `${long}\n***`,
       `${long}\n___`,
       `${long}\n- - -`,
       `${long}\n    ---`,
       `${long}\n\t---`,
-      ["---", "title: example", long, "----"].join("\n"),
+      [rule, frontMatterTitle, long, "----"].join("\n"),
     ];
 
     for (const input of unchanged) expect(normalizeMarkdown(input)).toBe(input);
 
-    const withClosedFrontMatter = ["---", "title: example", long, "---", long, "---"].join("\n");
+    const withClosedFrontMatter = [rule, frontMatterTitle, long, rule, long, rule].join("\n");
     expect(normalizeMarkdown(withClosedFrontMatter)).toBe(
-      ["---", "title: example", long, "---", long, "", "---"].join("\n"),
+      [rule, frontMatterTitle, long, rule, long, "", rule].join("\n"),
     );
+
+    const indentedFrontMatter = [`  ${rule}`, frontMatterTitle, long, rule].join("\n");
+    expect(normalizeMarkdown(indentedFrontMatter)).toBe(
+      [`  ${rule}`, frontMatterTitle, long, "", rule].join("\n"),
+    );
+
+    const spacedRuleBoundary = ["- - -", long, rule].join("\n");
+    expect(normalizeMarkdown(spacedRuleBoundary)).toBe(["- - -", long, "", rule].join("\n"));
   });
 });
 

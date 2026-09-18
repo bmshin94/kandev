@@ -58,7 +58,9 @@ must use the same character and at least the opener length. Mixed-character runs
 shorter runs, or opposite-character runs do not close the protected region. An
 unclosed fence protects the remaining input. Fence openers after list or blockquote
 markers keep their container-owned region protected through blank lines and
-indented content. Keep glued-close repair limited to its existing backtick behavior.
+indented content. A list remains owned through a blank only for an indented
+continuation; an unindented line ends that ownership before prose eligibility is
+evaluated. Keep glued-close repair limited to its existing backtick behavior.
 Do not broaden tagged-wrapper eligibility or interpret bare fences as wrappers.
 
 Use conservative block guards before the prose predicate. Reject indentation of
@@ -71,19 +73,24 @@ contexts conservatively when their source can resemble ordinary prose. Prefer a
 missed repair to a change in literal or nested content.
 
 Model HTML blocks by termination class. Basic and complete block tags, including
-void tags such as `hr`, remain protected until a blank line. Raw tags such as
-`pre`, `script`, `style`, and `textarea` remain protected until their matching
-closing tag. Comments and CDATA remain protected until their explicit terminators.
+void tags such as `hr`, remain protected until a blank line. Recognize arbitrary
+basic open and closing tags, not only a fixed allowlist, so custom elements and
+standalone closing tags receive the same protection. Raw tags such as `pre`,
+`script`, `style`, and `textarea` remain protected until their matching closing
+tag, including a close on the opening line. Comments, CDATA, processing
+instructions, and declarations remain protected until their explicit terminators.
 Closing tags do not end a basic block early. A leading front-matter-like region is
 also protected: when the first nonblank line is exactly
-`---`, preserve lines through the next standalone `---` or `...`. If there is no
-closer, preserve the remaining input. This is a conservative exclusion, not YAML
-parsing or support for front matter as a product feature.
+`---`, preserve lines through the next standalone `---` or `...`. Indented
+lookalikes do not start that region. If there is no closer, preserve the remaining
+input. This is a conservative exclusion, not YAML parsing or support for front
+matter as a product feature.
 
-Preserve each original line terminator. For an inserted empty line, use the
-terminator immediately before the candidate. Uniform CRLF stays CRLF, and mixed
-input keeps its existing terminators. Preserve leading/trailing blanks and absence
-of a final newline. Do not globally trim, normalize newlines, or rewrite rule bytes.
+Preserve each original line terminator, including lone CR. For an inserted empty
+line, use the terminator immediately before the candidate. Uniform CRLF stays
+CRLF, and mixed input keeps its existing terminators. Preserve leading/trailing
+blanks and absence of a final newline. Do not globally trim, normalize newlines,
+or rewrite rule bytes.
 Existing wrapper and glued-fence expectations remain regression gates.
 
 ### Rationale and limits
