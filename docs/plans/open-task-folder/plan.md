@@ -167,3 +167,8 @@ Follow-up Codex concurrency findings: discovery claims the live store loading
 state before fetching, and all folder controls share pending state per session.
 Deferred-response regressions cover simultaneous discovery consumers, shared
 folder-control disabling, duplicate suppression, release, and session independence.
+
+CI remediation: the desktop source-attachment suite also assumes an installed
+folder opener. It now explicitly stubs capability and native opening, matching
+the phone fixture and preserving real backend discovery tests. Both previously
+failing browser cases pass locally (2/2); targeted lint and typecheck pass.
