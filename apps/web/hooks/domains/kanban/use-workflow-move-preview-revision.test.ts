@@ -11,6 +11,7 @@ import {
 const TASK_ID = "task-1";
 const WORKFLOW_ID = "workflow-1";
 const SESSION_ID = "session-1";
+const INITIAL_PROFILE_ID = "profile-initial";
 const BASE_TIMESTAMP = "2026-09-15T00:00:00Z";
 const BOOKKEEPING_TIMESTAMP = "2026-09-15T00:01:00Z";
 
@@ -336,6 +337,56 @@ it("tracks profile mode and options through profile events without global versio
   expect(getWorkflowMovePreviewRevision(state as AppState, TASK_ID, WORKFLOW_ID, "step-2")).toBe(
     afterOptionsUpdate,
   );
+});
+
+it("tracks the initial-target profile after the original session is missing", () => {
+  resetState();
+  state.kanban.tasks[0]!.metadata = {
+    workflow_initial_session: {
+      session_id: "deleted-initial-session",
+      agent_profile_id: INITIAL_PROFILE_ID,
+    },
+  };
+  state.agentProfiles.items = [
+    {
+      id: "profile-1",
+      label: "Luna",
+      agent_id: "agent-1",
+      agent_name: "luna",
+      model: "mock-fast",
+      updatedAt: BASE_TIMESTAMP,
+    },
+    {
+      id: INITIAL_PROFILE_ID,
+      label: "Initial Luna",
+      agent_id: "agent-1",
+      agent_name: "luna",
+      model: "mock-fast",
+      updatedAt: BASE_TIMESTAMP,
+    },
+  ] as never;
+  state.settingsAgents.items = [
+    {
+      id: "agent-1",
+      name: "luna",
+      profiles: [settingsProfile("profile-1"), settingsProfile(INITIAL_PROFILE_ID)],
+    },
+  ] as never;
+
+  const first = getWorkflowMovePreviewRevision(state as AppState, TASK_ID, WORKFLOW_ID, "step-2");
+  const parsed = JSON.parse(first) as {
+    original_sessions: Array<{ stores: Array<{ status: string }> }>;
+    profiles: Array<{ id: string }>;
+  };
+  expect(parsed.original_sessions[0]?.stores.every(({ status }) => status === "missing")).toBe(
+    true,
+  );
+  expect(parsed.profiles.some(({ id }) => id === INITIAL_PROFILE_ID)).toBe(true);
+
+  dispatchProfileUpdate(INITIAL_PROFILE_ID, { mode: "plan" });
+  expect(
+    getWorkflowMovePreviewRevision(state as AppState, TASK_ID, WORKFLOW_ID, "step-2"),
+  ).not.toBe(first);
 });
 
 it("deduplicates logical sessions across task and indexed stores", () => {

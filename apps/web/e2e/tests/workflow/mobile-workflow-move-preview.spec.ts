@@ -1,6 +1,7 @@
 import type { Request } from "@playwright/test";
 import { expect, test } from "../../fixtures/test-base";
 import { assertNoDocumentHorizontalOverflow } from "../../helpers/layout-assertions";
+import { dwell } from "../../helpers/causal-waits";
 import { waitForLatestSessionDone } from "../../helpers/session";
 import { KanbanPage } from "../../pages/kanban-page";
 import {
@@ -92,14 +93,23 @@ test.describe("mobile: workflow move preview", () => {
         await detailsToggle.tap();
         await expect(row.getByTestId("workflow-move-preview-details")).toBeVisible();
 
-        const unexpectedRequest = tabletTestPage
-          .waitForRequest(isMovePreviewRequest, { timeout: 500 })
-          .then(() => true)
-          .catch(() => false);
+        let unexpectedRequest = false;
+        void tabletTestPage
+          .waitForRequest(isMovePreviewRequest)
+          .then(() => {
+            unexpectedRequest = true;
+          })
+          .catch(() => undefined);
         for (const revision of [1, 2, 3]) {
           await applyHarmlessPreviewUpdate(tabletTestPage, task.id, revision);
         }
-        expect(await unexpectedRequest).toBe(false);
+        await dwell(
+          tabletTestPage,
+          500,
+          "negative-assertion",
+          "observe no move-preview refresh after harmless touch updates",
+        );
+        expect(unexpectedRequest).toBe(false);
         expect(requestCount).toBe(1);
         await expect(row.getByTestId("workflow-move-preview-details")).toBeVisible();
         await expect(row.getByTestId("workflow-move-preview-loading")).toHaveCount(0);

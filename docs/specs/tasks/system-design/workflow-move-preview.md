@@ -174,6 +174,8 @@ The revision must read `mode` and `configOptions` from the full settings
 profile, and include the normalized profile's `updatedAt` as a scoped fallback
 when those fields are unavailable. An unrelated profile event or global profile
 version bump must not invalidate a preview that does not reference that profile.
+When an initial-target snapshot names an `agent_profile_id`, include that profile
+even if the historical session named by the snapshot is no longer present.
 
 Normalize object key order in projected maps. Sort collections only when their
 order is not meaningful; preserve rule order, selection order, and ties.

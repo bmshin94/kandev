@@ -243,6 +243,8 @@ function profileIdsForRevision(
   for (const { task } of tasks) {
     const profileId = task.metadata?.agent_profile_id;
     if (typeof profileId === "string" && profileId !== "") profileIds.add(profileId);
+    const initialProfileId = profileIdFromMetadata(task.metadata?.workflow_initial_session);
+    if (initialProfileId) profileIds.add(initialProfileId);
   }
   for (const { step } of steps) {
     if (step.agent_profile_id) profileIds.add(step.agent_profile_id);
@@ -254,6 +256,12 @@ function profileIdsForRevision(
     if (session.agent_profile_id) profileIds.add(session.agent_profile_id);
   }
   return profileIds;
+}
+
+function profileIdFromMetadata(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const profileId = (value as { agent_profile_id?: unknown }).agent_profile_id;
+  return typeof profileId === "string" && profileId !== "" ? profileId : undefined;
 }
 
 function projectProfile(state: AppState, profile: AppState["agentProfiles"]["items"][number]) {

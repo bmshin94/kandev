@@ -149,7 +149,7 @@ invalidations with a longer debounce or a persistent cache.
 Completed on 2026-09-18.
 
 - TDD RED was confirmed for the new harmless-update and composed-hook cases.
-- GREEN focused Vitest passed 73 tests across the revision, request-hook,
+- GREEN focused Vitest passed 74 tests across the revision, request-hook,
   renderer, stepper, and proceed-button suites.
 - The revision now projects prediction inputs, normalizes configuration maps,
   and encodes current/original session identity plus reusable candidate order.
@@ -180,3 +180,10 @@ Completed on 2026-09-18.
   fallback. The regression dispatches the real `agent.profile.updated` handler
   for a mode/config-options-only edit, then proves an unrelated profile event
   and global version bump do not invalidate the referenced preview.
+- Review remediation: an initial-target profile from the durable
+  `workflow_initial_session` snapshot remains a revision dependency after the
+  historical session is deleted. The regression proves the missing-session
+  state and a real profile event invalidate the open preview.
+- Review remediation: desktop and touch negative assertions use the shared
+  `dwell(..., "negative-assertion", ...)` observer window instead of treating a
+  request timeout as proof that no late refresh occurred.

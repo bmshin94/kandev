@@ -141,7 +141,7 @@ fake timers to assert both request count and status transitions.
 
 | Criteria | File and planned tests |
 | --- | --- |
-| 001.8 | `use-workflow-move-preview-revision.test.ts`: `ignores non-predictive task and session updates`; `normalizes equivalent map key order`; cover each store source |
+| 001.8 | `use-workflow-move-preview-revision.test.ts`: `ignores non-predictive task and session updates`; `normalizes equivalent map key order`; cover each store source and missing initial-target profile provenance |
 | 001.7, .8 | Same file: `tracks relevant configuration and routing changes`; `tracks candidate order without timestamp churn`; include ties, terminal and completion-follow-up candidates, primary fallback, and original provenance |
 | 001.7, .8; 002.3 | `use-workflow-move-preview.test.ts`: `keeps success and request count stable across harmless store updates`; compose the real revision function with the request hook |
 | 001.7; 002.3 | Same file: `refreshes after a predictive change amid harmless updates`; delayed stale response, reconnect, close/reopen, retry, two-request queue |
@@ -159,8 +159,9 @@ removed broad input with evidence that its meaningful fields remain observed.
 Extend `apps/web/e2e/tests/workflow/workflow-move-preview.spec.ts` in `chromium`:
 hold one hover open after success, apply repeated harmless updates through the
 existing `__KANDEV_E2E_STORE__` bridge, and assert no new POST or loading flash.
-Observe the result during the updates, not only after it settles. Count requests
-by task AND destination. Then change a real model with `apiClient.setSessionModel`,
+Observe the result during the updates, not only after it settles. Use the shared
+negative-assertion dwell observer for the no-refresh window. Count requests by
+task AND destination. Then change a real model with `apiClient.setSessionModel`,
 hold the preview response, assert loading, and release it to verify the new model.
 Do not mock the revision hook or add a production diagnostic endpoint.
 
@@ -182,8 +183,8 @@ historical completion results; this repair owns its new tests and results.
 
 ## Verification results
 
-Implementation completed on 2026-09-18. The focused unit suite passed 73 tests
-across five files, including 8 revision tests covering the review remediation.
+Implementation completed on 2026-09-18. The focused unit suite passed 74 tests
+across five files, including 9 revision tests covering the review remediation.
 Typecheck and changed-file ESLint passed. The final desktop
 Chromium run passed 3 tests, and the final mobile-chrome run passed 1 test.
 Both browser flows counted one initial preview request, kept the resolved result

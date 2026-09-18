@@ -1,6 +1,7 @@
 import { expectPreviewFooter } from "./workflow-move-preview-assertions";
 import type { Page, Request } from "@playwright/test";
 import { expect, test } from "../../fixtures/test-base";
+import { dwell } from "../../helpers/causal-waits";
 import { SessionPage } from "../../pages/session-page";
 import {
   createWorkflowAgentProfiles,
@@ -90,14 +91,23 @@ test.describe("Workflow move preview", () => {
       const { popover } = await openStepPreview(testPage, fixture.taskId, "Verify");
       expect(requestCount).toBe(1);
 
-      const unexpectedRequest = testPage
-        .waitForRequest(isMovePreviewRequest, { timeout: 500 })
-        .then(() => true)
-        .catch(() => false);
+      let unexpectedRequest = false;
+      void testPage
+        .waitForRequest(isMovePreviewRequest)
+        .then(() => {
+          unexpectedRequest = true;
+        })
+        .catch(() => undefined);
       for (const revision of [1, 2, 3]) {
         await applyHarmlessPreviewUpdate(testPage, fixture.taskId, revision);
       }
-      expect(await unexpectedRequest).toBe(false);
+      await dwell(
+        testPage,
+        500,
+        "negative-assertion",
+        "observe no move-preview refresh after harmless task updates",
+      );
+      expect(unexpectedRequest).toBe(false);
       expect(requestCount).toBe(1);
       await expect(popover.getByTestId("workflow-move-preview")).toBeVisible();
       await expect(popover.getByTestId("workflow-move-preview-loading")).toHaveCount(0);
