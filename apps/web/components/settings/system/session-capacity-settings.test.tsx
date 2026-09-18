@@ -130,12 +130,18 @@ describe("SessionCapacitySettings drafts", () => {
     render(<SessionCapacitySettings />);
     const toggle = await screen.findByRole("button", { name: ENABLE_LABEL });
     fireEvent.click(toggle);
-    fireEvent.change(await screen.findByLabelText(MAXIMUM_LABEL), {
+    const input = await screen.findByLabelText(MAXIMUM_LABEL);
+    fireEvent.change(input, {
       target: { value: "0" },
     });
 
     expect(saveContributor?.canSave).toBe(false);
     expect(saveContributor?.invalidReason).toBe(VALIDATION);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "session-capacity-maximum-help session-capacity-maximum-error",
+    );
+    expect(screen.getByTestId("session-capacity-maximum-error").textContent).toBe(VALIDATION);
   });
 
   it("allows turning the draft off after an invalid edit and retains the saved maximum", async () => {

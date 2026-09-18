@@ -84,6 +84,20 @@ describe("buildWipQueueViewModel", () => {
     expect(view?.position).toBe(1);
   });
 
+  it("prefers the active workflow projection over a stale snapshot", () => {
+    const view = buildWipQueueViewModel(
+      input({
+        snapshots: {
+          [WORKFLOW_ID]: snapshot([task()]),
+        },
+        activeTasks: [task({ queuedForStepId: undefined, wipAdmitted: true })],
+        activeSteps: snapshot().steps,
+      }),
+    );
+
+    expect(view).toBeNull();
+  });
+
   it("keeps the WIP banner for a task queued from its feeder", () => {
     const view = buildWipQueueViewModel(
       input({
@@ -137,5 +151,17 @@ describe("buildWipQueueViewModel", () => {
     const view = buildWipQueueViewModel(input({ snapshots: { [WORKFLOW_ID]: placeholder } }));
 
     expect(view).toMatchObject({ position: null, total: null, admittedCount: null });
+  });
+
+  it("uses the active workflow projection when the snapshot is a placeholder", () => {
+    const view = buildWipQueueViewModel(
+      input({
+        snapshots: { [WORKFLOW_ID]: { ...snapshot(), isPlaceholder: true } },
+        activeTasks: [task()],
+        activeSteps: snapshot().steps,
+      }),
+    );
+
+    expect(view).toMatchObject({ position: 1, total: 1, admittedCount: 0 });
   });
 });

@@ -40,6 +40,17 @@ function findWorkflow(workflows: WorkflowsState["items"], task: Task) {
 }
 
 function sourceData(input: WipQueueViewModelInput, task: Task) {
+  const activeTask =
+    input.activeWorkflowId === task.workflowId
+      ? input.activeTasks.find((candidate) => candidate.id === task.id)
+      : undefined;
+  if (activeTask) {
+    return {
+      steps: input.activeSteps,
+      tasks: input.activeTasks,
+      complete: true,
+    };
+  }
   const snapshot = input.snapshots[task.workflowId];
   if (snapshot) {
     return {
@@ -61,7 +72,10 @@ function sourceData(input: WipQueueViewModelInput, task: Task) {
 function findQueuedTask(
   input: WipQueueViewModelInput,
 ): { task: Task; destinationStepId: string } | null {
-  const task = findTaskInSnapshots(input.taskId, input.snapshots, input.activeTasks);
+  const activeTask = input.activeTasks.find(
+    (candidate) => candidate.id === input.taskId && candidate.workflowId === input.activeWorkflowId,
+  );
+  const task = activeTask ?? findTaskInSnapshots(input.taskId, input.snapshots, input.activeTasks);
   if (!task) return null;
   const destinationStepId = task.queuedForStepId;
   if (!destinationStepId) return null;

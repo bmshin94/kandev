@@ -88,13 +88,18 @@ function SessionCapacitySwitch({
 function MaximumField({
   value,
   disabled,
+  error,
   onChange,
 }: {
   value: string;
   disabled: boolean;
+  error?: string;
   onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
+  const describedBy = error
+    ? "session-capacity-maximum-help session-capacity-maximum-error"
+    : "session-capacity-maximum-help";
   return (
     <div className="min-w-0 space-y-2 border-t border-border/70 pt-5">
       <Label htmlFor="session-capacity-maximum">{t("system:sessionCapacityMaximumLabel")}</Label>
@@ -108,13 +113,23 @@ function MaximumField({
         step={1}
         value={value}
         disabled={disabled}
-        aria-describedby="session-capacity-maximum-help"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         onChange={(event) => onChange(event.target.value)}
         className={settingsControlClassName("w-full max-w-xs")}
       />
       <p id="session-capacity-maximum-help" className="text-xs text-muted-foreground">
         {t("system:sessionCapacityMaximumHelp")}
       </p>
+      {error && (
+        <p
+          id="session-capacity-maximum-error"
+          data-testid="session-capacity-maximum-error"
+          className="text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -162,6 +177,23 @@ function SessionCapacityManagedNotice() {
   );
 }
 
+function sessionCapacityMaximumError({
+  isAdmin,
+  isLocked,
+  enabled,
+  parsed,
+  invalidReason,
+}: {
+  isAdmin: boolean;
+  isLocked: boolean;
+  enabled: boolean;
+  parsed: number | null;
+  invalidReason: string | undefined;
+}) {
+  if (!isAdmin || isLocked || !enabled || parsed !== null) return undefined;
+  return invalidReason;
+}
+
 export function SessionCapacitySettings() {
   const { t } = useTranslation();
   const state = useSessionCapacitySettings();
@@ -185,6 +217,13 @@ export function SessionCapacitySettings() {
   const controlsDisabled = !state.isAdmin || state.isLocked;
   const effectiveEnabled = state.isLocked ? effective.enabled : state.enabledDraft;
   const effectiveMaximum = state.isLocked ? effective.max_sessions : settings.max_sessions;
+  const maximumError = sessionCapacityMaximumError({
+    isAdmin: state.isAdmin,
+    isLocked: state.isLocked,
+    enabled: state.enabledDraft,
+    parsed: state.parsed,
+    invalidReason: state.invalidReason,
+  });
 
   return (
     <SettingsCard
@@ -208,6 +247,7 @@ export function SessionCapacitySettings() {
           <MaximumField
             value={state.isLocked ? String(effective.max_sessions) : state.maxDraft}
             disabled={controlsDisabled}
+            error={maximumError}
             onChange={state.setMaxDraft}
           />
         )}

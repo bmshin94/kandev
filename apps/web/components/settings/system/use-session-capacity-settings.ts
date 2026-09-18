@@ -223,6 +223,7 @@ export function useSessionCapacitySettings() {
     savedMaximum,
     isAdmin,
     isLocked,
+    invalidReason,
     saveFailed,
   };
 }
