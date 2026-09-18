@@ -184,3 +184,9 @@ type Backend interface {
 
 // Compile-time check: the lifecycle Manager satisfies Backend.
 var _ Backend = (*lifecycle.Manager)(nil)
+
+// RunOwnerRecovery reconciles durable run inventory before Office retries work.
+// Implemented by the shared lifecycle backend; uncertain liveness is an error.
+type RunOwnerRecovery interface {
+	StopRunOwnerForRecovery(context.Context, ExecutionOwner) error
+}

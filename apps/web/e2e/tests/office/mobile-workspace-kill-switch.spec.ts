@@ -45,6 +45,7 @@ test.describe("mobile: Office workspace kill switch", () => {
     expect(pauseButtonBox?.height).toBeGreaterThanOrEqual(44);
     await pauseButton.tap();
     const pauseDialog = testPage.getByTestId("office-pause-workspace-dialog");
+    await expect(actionsDrawer).toHaveCount(0);
     await expect(pauseDialog).toBeVisible();
     await pauseDialog.getByTestId("office-pause-reason-input").fill("Mobile E2E kill switch drill");
 
@@ -74,6 +75,7 @@ test.describe("mobile: Office workspace kill switch", () => {
     await expect(resumeDrawer).toBeVisible();
     await resumeDrawer.getByTestId("office-resume-workspace-button").tap();
     const resumeDialog = testPage.getByTestId("office-resume-workspace-dialog");
+    await expect(resumeDrawer).toHaveCount(0);
     await expect(resumeDialog).toBeVisible();
 
     const resumePosted = waitForHttp(testPage, "POST", /\/office\/workspaces\/[^/]+\/resume$/);

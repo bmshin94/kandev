@@ -293,6 +293,7 @@ func (s *Service) RegisterEventSubscribers(eb bus.EventBus) error {
 		{events.OfficeApprovalResolved, s.handleApprovalResolved},
 		{events.OfficeCommentCreated, s.handleCommentCreated},
 		{events.AgentCompleted, maybeAsync(s.handleAgentCompleted)},
+		{events.AgentReady, maybeAsync(s.handleTasklessAgentReady)},
 		// AgentStopped fires when StopAgent is called (e.g. office
 		// fire-and-forget turn-complete teardown). Same handler — both
 		// signal "the agent is no longer running on this task and the
@@ -1015,16 +1016,15 @@ func (s *Service) handlePromptUsage(ctx context.Context, event *bus.Event) error
 	var fields *sqlite.TaskExecutionFields
 	switch {
 	case data.TaskID == "" && data.RunSessionID != "":
-		if data.SessionID == "" {
-			data.SessionID = data.RunSessionID
+		fields, err = s.tasklessUsageFields(ctx, data)
+		if err != nil {
+			return err
 		}
-		if data.AgentProfileID == "" {
-			data.AgentProfileID = data.AgentID
+		if fields == nil {
+			s.recordCostEventDropped(costDropReasonMissingIDs, data.TaskID)
+			return nil
 		}
-		fields = &sqlite.TaskExecutionFields{
-			WorkspaceID:            data.WorkspaceID,
-			AssigneeAgentProfileID: data.AgentProfileID,
-		}
+
 	case data.TaskID == "" || data.SessionID == "":
 		s.recordCostEventDropped(costDropReasonMissingIDs, data.TaskID)
 		return nil
@@ -1085,8 +1085,8 @@ func (s *Service) handlePromptUsage(ctx context.Context, event *bus.Event) error
 // cost ledger. Taskless executions do not have an orchestrator task session,
 // so the owner fields on the stream payload provide exact attribution.
 func (s *Service) handleAgentStreamUsage(ctx context.Context, event *bus.Event) error {
-	payload, ok := event.Data.(runtimeapi.AgentStreamEventPayload)
-	if !ok || payload.OwnerKind != runtimeapi.ExecutionOwnerRun || payload.RunSessionID == "" || payload.Data == nil || payload.Data.Usage == nil {
+	payload, err := decodeEventData[runtimeapi.AgentStreamEventPayload](event)
+	if err != nil || payload.OwnerKind != runtimeapi.ExecutionOwnerRun || payload.RunSessionID == "" || payload.Data == nil || payload.Data.Usage == nil {
 		return nil
 	}
 	usage := payload.Data.Usage

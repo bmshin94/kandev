@@ -230,3 +230,26 @@ Implementation evidence:
 - Phone drawer focus and full-height export preview need rendered checks.
 - PostgreSQL proof requires an isolated configured test database. Missing DSN is
   an explicit verification blocker for the affected migration work.
+
+## Review remediation (2026-09-18)
+
+The four local review findings were corrected in the primary session:
+run-owned runtime registration and scratch workspaces, normal ACP turn completion,
+workspace/run cost attribution, and mobile confirmation lifetime. Regression
+coverage now uses the production runtime inventory writer and serialized usage
+frames. The taskless E2E fixture assigns its routine and requires two finished
+agent runs with distinct session IDs. Mobile confirmation remains outside the
+closing actions drawer, preserving the existing UI-04 composition and controls.
+
+Delivery uses an independent checkout because this workspace's Git metadata is
+outside the writable sandbox. Source changes remain in this workspace too.
+
+Remediation verification:
+
+- Office service, scheduler, pause, runtime, wakeup, costs and runs repository suites passed.
+- Runtime/Office run-owner, taskless and run-session regression tests passed with `-race`.
+- Backend composition checks (`Taskless|Routine.*Session|Office.*Scope`) passed.
+- `taskless-routine-session.spec.ts` passed against a rebuilt backend with two real mock-agent completions.
+- Mobile pause/resume component regressions, web typecheck and focused ESLint passed.
+- Go lint reported zero issues; documentation catalog and specification lint passed.
+- Native mobile Playwright was blocked by macOS Mach-port permissions. The rebuilt Docker mobile-chrome run of `mobile-workspace-kill-switch.spec.ts` passed, including pause and resume after drawer unmount.

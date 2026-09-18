@@ -64,6 +64,16 @@ live resources; workspace/agent deletion performs stop-before-delete and retains
 cleanup evidence when stopping fails. Do not store JWTs or environment secrets.
 No changes to task-session nullability or synthetic task creation are permitted.
 
+Shared runtime inventory uses the run-session ID as `executors_running.session_id`
+and executor correlation identity, with an empty task ID and the typed owner
+snapshot in inventory metadata. This inventory key has no task-session foreign
+key. `AgentExecution.SessionID` remains empty for run owners, so task consumers
+cannot mistake the execution for a task session. Run workspaces live under
+`office-runs/<workspace>/<run-session>` and do not carry task ownership markers.
+Normal stop persists terminal inventory. Recovery validates the owner snapshot
+and stops the recorded predecessor before allowing a retry; failed stops and
+unknown inventory retain the claim.
+
 ## Runtime admission and security
 
 Proposed runtime APIs (not current symbols): typed `ExecutionOwner` on
@@ -128,6 +138,10 @@ finish only their own attempt and cannot clear agent-working state for a newer
 attempt. Retain legacy resolution only for legacy events; never emit new
 agent-only events. Runtime task consumers explicitly ignore run-owned events
 before reading/writing task sessions or workflow state.
+
+Workspace cost readers join taskless ledger rows to their durable run session;
+run totals include every attempt belonging to that run. Serialized event-bus
+usage frames have the same decoding and deduplication behavior as typed frames.
 
 Use the existing Office cost ledger and run events for usage/output projections;
 do not write run-only events into task-message/session tables with task foreign

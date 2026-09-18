@@ -21,9 +21,10 @@ import (
 // Office runs. It reserves the Office-owned attempt first, then delegates
 // process allocation and prompt delivery to the shared runtime.
 type officeRunSessionLauncher struct {
-	repo    *officesqlite.Repository
-	runtime runtimeapi.Runtime
-	logger  *logger.Logger
+	repo     *officesqlite.Repository
+	runtime  runtimeapi.Runtime
+	recovery runtimeapi.RunOwnerRecovery
+	logger   *logger.Logger
 }
 
 var _ officeservice.RunSessionLauncher = (*officeRunSessionLauncher)(nil)
@@ -32,10 +33,12 @@ var _ runtimeapi.OwnerAdmission = (*officeRunSessionLauncher)(nil)
 func newOfficeRunSessionLauncher(
 	repo *officesqlite.Repository, runtimeBackend runtimeapi.Backend, log *logger.Logger,
 ) *officeRunSessionLauncher {
+	recovery, _ := runtimeBackend.(runtimeapi.RunOwnerRecovery)
 	return &officeRunSessionLauncher{
-		repo:    repo,
-		runtime: runtimeapi.New(runtimeBackend),
-		logger:  log.WithFields(zap.String("component", "office-run-session-launcher")),
+		repo:     repo,
+		runtime:  runtimeapi.New(runtimeBackend),
+		recovery: recovery,
+		logger:   log.WithFields(zap.String("component", "office-run-session-launcher")),
 	}
 }
 
@@ -219,6 +222,9 @@ func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) err
 	}
 	for _, session := range sessions {
 		if session.ExecutionID == "" {
+			if err := l.stopRecoveredRunSession(ctx, session); err != nil {
+				return err
+			}
 			if _, err := l.repo.FinishRunSession(ctx, session.ID, models.RunSessionStateInterrupted, "runtime execution was not registered"); err != nil {
 				return err
 			}
@@ -229,6 +235,9 @@ func (l *officeRunSessionLauncher) ReconcileRunSessions(ctx context.Context) err
 		if err != nil {
 			if !runtimeapi.IsNotFound(err) {
 				return fmt.Errorf("reconcile run session %q: inspect execution: %w", session.ID, err)
+			}
+			if err := l.stopRecoveredRunSession(ctx, session); err != nil {
+				return err
 			}
 			if _, finishErr := l.repo.FinishRunSession(ctx, session.ID, models.RunSessionStateInterrupted, "runtime execution was not found after restart"); finishErr != nil {
 				return finishErr
@@ -331,4 +340,15 @@ func cloneStringMap(input map[string]string) map[string]string {
 		output[key] = value
 	}
 	return output
+}
+
+func (l *officeRunSessionLauncher) stopRecoveredRunSession(ctx context.Context, session models.RunSession) error {
+	if l.recovery == nil {
+		return errors.New("run recovery requires runtime inventory reconciliation")
+	}
+	return l.recovery.StopRunOwnerForRecovery(ctx, runtimeapi.ExecutionOwner{
+		Kind: runtimeapi.ExecutionOwnerRun, WorkspaceID: session.WorkspaceID,
+		RunID: session.RunID, RunSessionID: session.ID, Attempt: session.Attempt,
+		AgentProfileID: session.AgentProfileID,
+	})
 }

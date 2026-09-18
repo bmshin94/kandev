@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconAdjustmentsHorizontal, IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import {
+  IconAdjustmentsHorizontal,
+  IconAlertTriangle,
+  IconRefresh,
+  IconPlayerPause,
+  IconPlayerPlay,
+} from "@tabler/icons-react";
 import { Button } from "@kandev/ui/button";
 import { Badge } from "@kandev/ui/badge";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@kandev/ui/drawer";
@@ -128,50 +134,67 @@ function WorkspacePauseActions({ view }: { view: WorkspacePauseViewProps }) {
   const { t } = useTranslation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   if (!view.activeWorkspaceId) return null;
-  const controls = (
-    <div className="flex flex-wrap items-center gap-2">
-      <RefreshPauseStateButton onRefresh={view.refresh} testId="office-pause-refresh-topbar" />
-      {view.record ? (
-        <ResumeWorkspaceButton onResume={view.resume} />
-      ) : (
-        <PauseWorkspaceButton onPause={view.pause} />
-      )}
-    </div>
-  );
-  return (
-    <>
-      <div
-        className="hidden items-center gap-2 md:flex"
-        data-testid="office-workspace-topbar-actions"
-      >
-        {controls}
+  const renderActions = (onOpen: () => void) => {
+    const controls = (
+      <div className="flex flex-wrap items-center gap-2">
+        <RefreshPauseStateButton onRefresh={view.refresh} testId="office-pause-refresh-topbar" />
+        <Button
+          size="sm"
+          variant={view.record ? "default" : "outline"}
+          className="min-h-11 cursor-pointer gap-1.5 sm:min-h-0"
+          disabled={view.isMutating}
+          data-testid={
+            view.record ? "office-resume-workspace-button" : "office-pause-workspace-button"
+          }
+          onClick={() => {
+            setDrawerOpen(false);
+            onOpen();
+          }}
+        >
+          {view.record ? (
+            <IconPlayerPlay className="h-3.5 w-3.5" />
+          ) : (
+            <IconPlayerPause className="h-3.5 w-3.5" />
+          )}
+          {t(view.record ? "office:resumeWorkspace" : "office:pauseWorkspace")}
+        </Button>
       </div>
-      <div className="md:hidden">
-        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-          <DrawerTrigger asChild>
-            <Button
-              variant="ghost"
-              className="min-h-11 min-w-11 cursor-pointer px-2"
-              aria-label={t("office:workspaceActions")}
-              data-testid="office-workspace-actions-trigger"
-            >
-              <IconAdjustmentsHorizontal className="h-4 w-4" />
-            </Button>
-          </DrawerTrigger>
-          <DrawerContent data-testid="office-workspace-actions-drawer">
-            <DrawerHeader>
-              <DrawerTitle>{t("office:workspaceActions")}</DrawerTitle>
-            </DrawerHeader>
-            <div
-              className="flex flex-col gap-2 px-4 pb-6 [&_button]:min-h-11"
-              onClick={() => setDrawerOpen(false)}
-            >
-              {controls}
-            </div>
-          </DrawerContent>
-        </Drawer>
-      </div>
-    </>
+    );
+    return (
+      <>
+        <div
+          className="hidden items-center gap-2 md:flex"
+          data-testid="office-workspace-topbar-actions"
+        >
+          {controls}
+        </div>
+        <div className="md:hidden">
+          <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+            <DrawerTrigger asChild>
+              <Button
+                variant="ghost"
+                className="min-h-11 min-w-11 cursor-pointer px-2"
+                aria-label={t("office:workspaceActions")}
+                data-testid="office-workspace-actions-trigger"
+              >
+                <IconAdjustmentsHorizontal className="h-4 w-4" />
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent data-testid="office-workspace-actions-drawer">
+              <DrawerHeader>
+                <DrawerTitle>{t("office:workspaceActions")}</DrawerTitle>
+              </DrawerHeader>
+              <div className="flex flex-col gap-2 px-4 pb-6 [&_button]:min-h-11">{controls}</div>
+            </DrawerContent>
+          </Drawer>
+        </div>
+      </>
+    );
+  };
+  return view.record ? (
+    <ResumeWorkspaceButton onResume={view.resume} renderTrigger={renderActions} />
+  ) : (
+    <PauseWorkspaceButton onPause={view.pause} renderTrigger={renderActions} />
   );
 }
 

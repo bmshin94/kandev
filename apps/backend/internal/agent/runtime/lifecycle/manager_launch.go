@@ -773,7 +773,7 @@ func (m *Manager) resolveScratchWorkspace(ctx context.Context, req *LaunchReques
 			zap.Error(err))
 		return ""
 	}
-	if !req.IsEphemeral {
+	if !req.IsEphemeral && req.Owner.Kind != ExecutionOwnerRun {
 		if err := storageworkspaces.WriteOwnershipMarker(scratchPath, storageworkspaces.OwnershipMarker{
 			TaskID: req.TaskID, WorkspaceID: req.WorkspaceID, TaskDirName: req.TaskID,
 			LayoutVersion: storageworkspaces.LayoutVersionScratch,
@@ -1055,7 +1055,7 @@ func (m *Manager) launchBuildExecutorRequest(ctx context.Context, executionID st
 		InstanceID:                     executionID,
 		TaskID:                         reqWithWorktree.TaskID,
 		TaskTitle:                      reqWithWorktree.TaskTitle,
-		SessionID:                      reqWithWorktree.SessionID,
+		SessionID:                      launchInventorySessionID(reqWithWorktree),
 		TaskEnvironmentID:              reqWithWorktree.TaskEnvironmentID,
 		WorkspaceReuseRequired:         reqWithWorktree.WorkspaceReuseRequired,
 		AgentProfileID:                 executionProfileID(reqWithWorktree),
@@ -1829,6 +1829,7 @@ func (m *Manager) buildExecutionFromInstance(
 	prepResult *EnvPrepareResult,
 ) (*AgentExecution, error) {
 	execution := execInstance.ToAgentExecution(execReq)
+	execution.SessionID = req.SessionID
 	execution.ResumeAttemptID = ResumeAttemptIDFromContext(ctx)
 	execution.RuntimeName = rt.Name()
 	execution.WorkspaceID = req.WorkspaceID
@@ -2174,7 +2175,7 @@ func (m *Manager) finishRegisteredLaunchRollback(execution *AgentExecution, task
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if !discardDurable || taskCleanupActive {
-		m.deleteExecutorRunning(cleanupCtx, execution.SessionID)
+		m.deleteExecutorRunning(cleanupCtx, executionInventorySessionID(execution))
 	} else if reader, ok := m.runningWriter.(executorRunningReader); ok {
 		running, err := reader.GetExecutorRunningBySessionID(cleanupCtx, execution.SessionID)
 		if err == nil && running != nil && running.AgentExecutionID == execution.ID {
