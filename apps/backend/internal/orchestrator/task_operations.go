@@ -5922,6 +5922,7 @@ func (s *Service) runPromptTurn(
 	promptCtx = dispatchCtx
 	onDispatched, dispatchOutcome := s.preparePromptDispatchCallback(
 		promptCtx, taskID, sessionID, session, rollback, options, foregroundDispatch, releaseDispatchGuard,
+		resumeAttempt,
 	)
 	result, execErr := s.executor.PromptWithDispatchCallback(
 		promptCtx, taskID, sessionID, effectivePrompt, attachments, dispatchOnly,
@@ -6015,7 +6016,7 @@ func (s *Service) resolveModelSwitchAttempt(
 ) (switchResult *PromptResult, handled bool, remainingGuard *lockedCancelInFlightGuard, switchErr error) {
 	result, handledSwitch, attemptErr := s.attemptModelSwitchForPrompt(
 		ctx, taskID, sessionID, model, effectivePrompt, session, foregroundDispatch, runBeforeDispatch,
-		runAfterDispatchAdmission,
+		runAfterDispatchAdmission, resumeAttempt,
 	)
 	if !handledSwitch {
 		if modelSwitchGuard != nil {
@@ -6296,13 +6297,14 @@ func (s *Service) validateAndRunDispatchBoundary(
 
 // preparePromptDispatchCallback binds the turn, arms the interactive-prompt
 // attempt evidence, and builds the onDispatched callback executor.
-// PromptWithDispatchCallback invokes once agentctl accepts the prompt —
-// wrapping in the caller's afterDispatch hook and the nonterminal dispatch
-// guard release, innermost first, when either applies.
+// PromptWithDispatchCallback invokes once agentctl accepts the prompt. For a
+// resumed turn, ownership transfer wraps the durable afterDispatch hook and
+// identity publication; the nonterminal dispatch guard releases last.
 func (s *Service) preparePromptDispatchCallback(
 	promptCtx context.Context, taskID, sessionID string, session *models.TaskSession,
 	rollback promptClaimRollback, options promptTaskOptions, foregroundDispatch *foregroundDispatch,
 	releaseDispatchGuard func(),
+	resumeAttempt *resumeAttempt,
 ) (onDispatched func(), dispatchOutcome *promptDispatchOutcome) {
 	s.bindPromptTurnID(promptCtx, session, rollback.turnID)
 	s.beginInteractivePromptAttempt(
@@ -6323,9 +6325,10 @@ func (s *Service) preparePromptDispatchCallback(
 			}
 		}
 	}
+	acceptedExecutionID := session.AgentExecutionID
 	onDispatched = s.promptDispatchCallbackForIdentity(
 		promptCtx, taskID, sessionID, rollback.sessionIdentity,
-		session.AgentExecutionID, rollback.reservedTurn, foregroundDispatch, dispatchOutcome,
+		acceptedExecutionID, rollback.reservedTurn, foregroundDispatch, dispatchOutcome,
 	)
 	if options.afterDispatch != nil {
 		originalOnDispatched := onDispatched
@@ -6334,6 +6337,15 @@ func (s *Service) preparePromptDispatchCallback(
 			originalOnDispatched()
 			_, publicationErr := dispatchOutcome.snapshot()
 			dispatchOutcome.recordAccepted(errors.Join(durableOutcomeErr, publicationErr))
+		}
+	}
+	if resumeAttempt != nil {
+		originalOnDispatched := onDispatched
+		onDispatched = func() {
+			// Transfer startup ownership before any durable post-acceptance hook
+			// or identity publication can fail and before the dispatch guard releases.
+			s.acceptResumeAttemptAtPromptAcceptance(acceptedExecutionID, resumeAttempt)
+			originalOnDispatched()
 		}
 	}
 	if releaseDispatchGuard != nil {
@@ -6348,6 +6360,25 @@ func (s *Service) preparePromptDispatchCallback(
 		}
 	}
 	return onDispatched, dispatchOutcome
+}
+
+func (s *Service) acceptResumeAttemptAtPromptAcceptance(
+	expectedExecutionID string,
+	attempt *resumeAttempt,
+) bool {
+	if attempt == nil {
+		return false
+	}
+	if expectedExecutionID == "" {
+		expectedExecutionID = attempt.execution()
+	}
+	if expectedExecutionID == "" {
+		return false
+	}
+	// Provider acceptance is the irreversible boundary for startup teardown.
+	// Use the execution admitted before the provider call; stale-incarnation
+	// publication remains separately fenced by promptDispatchCallbackForIdentity.
+	return s.resumeAttemptStore().accept(attempt, expectedExecutionID)
 }
 
 func (s *Service) finishPromptDispatchFailure(
@@ -6782,8 +6813,12 @@ func (s *Service) promptDispatchCallbackForIdentity(
 func (s *Service) attemptModelSwitchForPrompt(
 	ctx context.Context, taskID, sessionID, model, effectivePrompt string, session *models.TaskSession,
 	foregroundDispatch *foregroundDispatch, runBeforeDispatch func() error,
-	runAfterDispatchAdmission func() error,
+	runAfterDispatchAdmission func() error, resumeAttempts ...*resumeAttempt,
 ) (result *PromptResult, handled bool, err error) {
+	var resumeAttempt *resumeAttempt
+	if len(resumeAttempts) > 0 {
+		resumeAttempt = resumeAttempts[0]
+	}
 	if modelSwitchRequired(session, model) {
 		s.beginInitialPromptAttempt(sessionID, s.isDynamicPromptSession(session))
 		admissionErr := runBeforeDispatch()
@@ -6799,7 +6834,9 @@ func (s *Service) attemptModelSwitchForPrompt(
 			return nil, true, admissionErr
 		}
 	}
-	result, handled, switchErr := s.trySwitchModelForPrompt(ctx, taskID, sessionID, model, effectivePrompt, session, foregroundDispatch)
+	result, handled, switchErr := s.trySwitchModelForPrompt(
+		ctx, taskID, sessionID, model, effectivePrompt, session, foregroundDispatch, resumeAttempt,
+	)
 	if handled && switchErr != nil {
 		s.clearPromptAttemptEvidence(sessionID, "", 0)
 	}
@@ -6808,7 +6845,13 @@ func (s *Service) attemptModelSwitchForPrompt(
 
 // trySwitchModelForPrompt keeps foreground admission consistent when a model
 // switch either dispatches the prompt itself or fails before reaching the agent.
-func (s *Service) trySwitchModelForPrompt(ctx context.Context, taskID, sessionID, model, prompt string, session *models.TaskSession, dispatch *foregroundDispatch) (*PromptResult, bool, error) {
+func (s *Service) trySwitchModelForPrompt(
+	ctx context.Context,
+	taskID, sessionID, model, prompt string,
+	session *models.TaskSession,
+	dispatch *foregroundDispatch,
+	resumeAttempt *resumeAttempt,
+) (*PromptResult, bool, error) {
 	result, switched, err := s.trySwitchModel(ctx, taskID, sessionID, model, prompt, session)
 	if !switched && err == nil {
 		return nil, false, nil
@@ -6819,6 +6862,14 @@ func (s *Service) trySwitchModelForPrompt(ctx context.Context, taskID, sessionID
 	}
 	if executionID, executionErr := s.agentManager.GetExecutionIDForSession(ctx, sessionID); executionErr == nil && executionID != "" {
 		s.bindPromptAttemptToExecution(ctx, sessionID, executionID)
+		if resumeAttempt != nil {
+			// Model-switch fallback launches the prompt as part of the replacement
+			// startup request, so it has no ordinary dispatch callback. Bind the
+			// replacement execution and transfer startup ownership at this success
+			// boundary while the model-switch guard still excludes cancellation.
+			resumeAttempt.setExecutionID(executionID)
+			s.resumeAttemptStore().accept(resumeAttempt, executionID)
+		}
 	}
 	revealedBackground := s.acceptForegroundDispatch(dispatch)
 	if revealedBackground || dispatch.yieldedBeforeBegin || s.acceptedForegroundDispatchClaim(dispatch) {

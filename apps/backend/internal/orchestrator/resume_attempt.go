@@ -37,6 +37,10 @@ type resumeAttempt struct {
 	// can be retained when a replacement is admitted and retained again when
 	// its owner eventually returns; both paths must describe one tombstone.
 	retained bool
+	// accepted is protected by resumeAttemptRegistry.mu. Once provider
+	// acceptance is recorded, explicit session cancellation no longer owns
+	// startup teardown for this attempt.
+	accepted bool
 }
 
 type resumeAttemptRegistry struct {
@@ -56,6 +60,7 @@ type resumeAttemptTombstone struct {
 	id          uint64
 	executionID string
 	cancelled   bool
+	accepted    bool
 }
 
 func newResumeAttemptRegistry() *resumeAttemptRegistry {
@@ -111,7 +116,7 @@ func (r *resumeAttemptRegistry) invalidate(sessionID string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	attempt := r.attempts[sessionID]
-	if attempt == nil || attempt.ctx.Err() != nil {
+	if attempt == nil || attempt.ctx.Err() != nil || attempt.accepted {
 		return false
 	}
 	attempt.cancel()
@@ -161,6 +166,9 @@ func (r *resumeAttemptRegistry) canCleanup(attempt *resumeAttempt) bool {
 	if current := r.attempts[attempt.sessionID]; current != nil && current != attempt {
 		return false
 	}
+	if attempt.accepted {
+		return false
+	}
 	for _, tombstone := range r.tombstones[attempt.sessionID] {
 		if tombstone.id > attempt.id && tombstone.executionID == executionID {
 			return false
@@ -203,6 +211,9 @@ func (r *resumeAttemptRegistry) retainLocked(attempt *resumeAttempt) {
 		for index := range entries {
 			if entries[index].id == attempt.id && entries[index].executionID == "" && executionID != "" {
 				entries[index].executionID = executionID
+			}
+			if entries[index].id == attempt.id {
+				entries[index].accepted = attempt.accepted
 				break
 			}
 		}
@@ -215,6 +226,7 @@ func (r *resumeAttemptRegistry) retainLocked(attempt *resumeAttempt) {
 		id:          attempt.id,
 		executionID: executionID,
 		cancelled:   attempt.ctx.Err() != nil,
+		accepted:    attempt.accepted,
 	})
 	if len(entries) > maxResumeAttemptTombstones {
 		entries = entries[len(entries)-maxResumeAttemptTombstones:]
@@ -253,10 +265,40 @@ func (r *resumeAttemptRegistry) canCleanupIdentity(sessionID, executionID, origi
 	if !found || tombstone.executionID != executionID {
 		return false
 	}
+	if tombstone.accepted {
+		return false
+	}
 	if current := r.attempts[sessionID]; current != nil && current.id > id {
 		return false
 	}
 	return r.latestExecution[sessionID][executionID] <= id
+}
+
+// accept transfers startup authority to the provider turn while retaining the
+// attempt identity for later execution events. The registry lock orders this
+// transition with explicit cancellation, so an invalidated attempt cannot be
+// revived by a late provider callback.
+func (r *resumeAttemptRegistry) accept(attempt *resumeAttempt, executionID string) bool {
+	if attempt == nil || executionID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.attempts[attempt.sessionID] != attempt || attempt.ctx.Err() != nil {
+		return false
+	}
+	attempt.executionMu.Lock()
+	knownExecutionID := attempt.executionID
+	if knownExecutionID == "" {
+		attempt.executionID = executionID
+		knownExecutionID = executionID
+	}
+	attempt.executionMu.Unlock()
+	if knownExecutionID != executionID {
+		return false
+	}
+	attempt.accepted = true
+	return true
 }
 
 func (r *resumeAttemptRegistry) cancelledExecutionLocked(sessionID, executionID string) bool {
