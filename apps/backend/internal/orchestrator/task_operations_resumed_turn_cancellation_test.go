@@ -786,10 +786,23 @@ func TestResumeAttempt_ModelSwitchFallbackTransfersAcceptance(t *testing.T) {
 	if result == nil || result.StopReason != "model_switched" {
 		t.Fatalf("model-switch result = %#v, want model_switched", result)
 	}
+	manager.mu.Lock()
+	onDispatched := manager.initialPromptDispatchCallback
+	manager.mu.Unlock()
+	if onDispatched == nil {
+		t.Fatal("model-switch fallback did not register its initial-prompt acceptance callback")
+	}
+	registry := svc.resumeAttemptStore()
+	registry.mu.Lock()
+	acceptedBeforeDispatch := attempt.accepted
+	registry.mu.Unlock()
+	if acceptedBeforeDispatch {
+		t.Fatal("model-switch fallback transferred startup ownership before provider acceptance")
+	}
+	onDispatched()
 	if got := attempt.execution(); got != newExecution {
 		t.Fatalf("resume attempt execution = %q, want %q", got, newExecution)
 	}
-	registry := svc.resumeAttemptStore()
 	registry.mu.Lock()
 	accepted := attempt.accepted
 	registry.mu.Unlock()

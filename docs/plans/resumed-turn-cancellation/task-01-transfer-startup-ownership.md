@@ -30,6 +30,7 @@ Keep the execution identity valid so pause and follow-up use the same healthy pr
 - Implement the accepted phase and guarded authority transfer in the existing attempt registry.
 - Integrate lazy and compound resume, prompt acceptance, final result handling, and exact startup cleanup.
 - Audit handler retries and model switches for the same accepted boundary.
+- Propagate model-switch startup acceptance and pre-acceptance failure callbacks through lifecycle.
 - Add the named service regressions from the plan and desktop/phone process-reuse scenarios.
 - Preserve pre-acceptance cancellation, stale-callback rejection, and unrelated queued work.
 
@@ -90,6 +91,7 @@ git diff --check
 - `apps/backend/internal/orchestrator/task_operations_resumed_turn_cancellation_test.go` (new)
 - `apps/backend/internal/orchestrator/task_operations_resume_cancellation_test.go`
 - `apps/backend/internal/orchestrator/executor/executor_interaction.go` (only if acceptance propagation needs correction)
+- `apps/backend/internal/agent/runtime/lifecycle/{types,manager_interaction,session}.go` (model-switch initial-prompt callbacks)
 - `apps/backend/internal/task/handlers/message_handlers_resume_readiness_test.go`
 - `apps/web/e2e/tests/session/session-recovery.spec.ts`
 - `apps/web/e2e/tests/session/mobile-session-resume-recovery.spec.ts`
@@ -153,3 +155,14 @@ work does not trigger startup teardown or replay. The desktop and phone accepted
 scenarios capture runtime identity after the first accepted response, wait for a new
 persisted response ID before the second pause, and compare that identity after every
 pause and follow-up. The package is uncommitted and no live runtime state was changed.
+
+The PR fixup review found that the model-switch fallback starts its initial prompt
+from a lifecycle goroutine after `StartAgentProcess` returns. The implementation now
+registers one-shot dispatch and pre-acceptance failure callbacks before startup,
+keeps the resume attempt active until one of them settles, and transfers ownership
+using the replacement execution ID captured by the launch response. The new
+`TestResumeAttempt_ModelSwitchFallbackCancellationBeforeInitialPromptAcceptance`
+barrier proves cancellation still force-cleans the replacement before provider
+acceptance and that a delayed callback cannot revive the cancelled attempt.
+Lifecycle coverage also verifies that the callback reaches the asynchronous initial
+prompt acceptance point.

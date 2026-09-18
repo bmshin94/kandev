@@ -63,6 +63,7 @@ Other contribution recovery, error-history, and resume-queue packages retain the
 
 - Transfer startup cancellation authority at provider acceptance.
 - Preserve accepted execution callbacks, runtime identity, and normal cancellation outcomes.
+- Keep model-switch fallback startup cancellable until lifecycle reports initial-prompt acceptance or failure.
 - Cover lazy resume, compound resume-and-prompt, handler retry, and relevant model-switch paths.
 - Preserve cancellation before readiness, queued work, and exact replacement cleanup safety.
 - Prove pause and follow-up behavior on desktop and phone.
@@ -96,6 +97,7 @@ Add `task_operations_resumed_turn_cancellation_test.go` with these named regress
 | `TestResumeAttempt_AcceptedExecutionEventsRemainValid` | 007.2, .9: token, stream, and completion events remain valid after pause; stale/replaced events remain rejected. |
 | `TestResumeAttempt_AcceptedPublicationFailureDoesNotCleanup` | 007.8: accepted publication failure causes no startup teardown, rollback, or replay. |
 | `TestResumeAttempt_ModelSwitchFallbackTransfersAcceptance` | 007.8: a replacement execution launched by model-switch fallback inherits accepted-turn ownership. |
+| `TestResumeAttempt_ModelSwitchFallbackCancellationBeforeInitialPromptAcceptance` | 007.7-.8: cancellation after process startup but before asynchronous initial-prompt acceptance force-cleans the replacement and fences a delayed callback. |
 | `TestPromptTask_QueuedAcceptedTurnIdentityReadFailurePreservesExecution` | 007.7-.9: a queued dispatch with a nonempty incarnation transfers ownership before an injected identity-read failure and preserves the same execution for pause and follow-up. |
 
 Use real service paths with controlled provider barriers. Assert zero forced-stop
@@ -153,6 +155,7 @@ startup cleanup of the accepted execution. The final verification block passed:
 - `python3 scripts/list-docs.py validate`: passed.
 - `python3 scripts/lint-spec-files.py --all`: passed.
 - `git diff --check`: passed.
+- Model-switch lifecycle callback propagation and pre-acceptance cancellation barrier: passed.
 
 The browser helper counts persisted `agent_boot` metadata because the boot row's
 content is empty and the rendered resume label is deduplicated. The package is

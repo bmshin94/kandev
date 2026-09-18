@@ -6852,23 +6852,29 @@ func (s *Service) trySwitchModelForPrompt(
 	dispatch *foregroundDispatch,
 	resumeAttempt *resumeAttempt,
 ) (*PromptResult, bool, error) {
-	result, switched, err := s.trySwitchModel(ctx, taskID, sessionID, model, prompt, session)
+	releaseHold, onDispatched, onFailure, holdErr := s.modelSwitchResumeCallbacks(session, model, resumeAttempt)
+	if holdErr != nil {
+		return nil, true, holdErr
+	}
+	result, switched, err := s.trySwitchModelWithDispatchCallbacks(
+		ctx, taskID, sessionID, model, prompt, session, onDispatched, onFailure,
+	)
 	if !switched && err == nil {
+		releaseHold()
 		return nil, false, nil
 	}
 	if err != nil {
+		releaseHold()
 		s.rollbackForegroundDispatchOnFailure(ctx, taskID, sessionID, dispatch)
 		return result, true, err
 	}
 	if executionID, executionErr := s.agentManager.GetExecutionIDForSession(ctx, sessionID); executionErr == nil && executionID != "" {
 		s.bindPromptAttemptToExecution(ctx, sessionID, executionID)
 		if resumeAttempt != nil {
-			// Model-switch fallback launches the prompt as part of the replacement
-			// startup request, so it has no ordinary dispatch callback. Bind the
-			// replacement execution and transfer startup ownership at this success
-			// boundary while the model-switch guard still excludes cancellation.
+			// The replacement's initial prompt is dispatched asynchronously by
+			// lifecycle. Bind its immutable execution identity now; startup
+			// ownership transfers only from the callback installed for that prompt.
 			resumeAttempt.setExecutionID(executionID)
-			s.resumeAttemptStore().accept(resumeAttempt, executionID)
 		}
 	}
 	revealedBackground := s.acceptForegroundDispatch(dispatch)
@@ -6876,6 +6882,30 @@ func (s *Service) trySwitchModelForPrompt(
 		s.publishForegroundActivityChanged(ctx, taskID, sessionID)
 	}
 	return result, true, nil
+}
+
+func (s *Service) modelSwitchResumeCallbacks(
+	session *models.TaskSession,
+	model string,
+	resumeAttempt *resumeAttempt,
+) (release func(), onDispatched func(executionID string), onFailure func(), err error) {
+	release = func() {}
+	if resumeAttempt == nil || !modelSwitchRequired(session, model) {
+		return release, nil, nil, nil
+	}
+	registry := s.resumeAttemptStore()
+	if !registry.holdForInitialPrompt(resumeAttempt) {
+		s.cleanupCancelledResumeAttempt(resumeAttempt)
+		return nil, nil, nil, ErrResumeAttemptCancelled
+	}
+	release = func() { registry.releaseInitialPromptHold(resumeAttempt) }
+	onDispatched = func(executionID string) {
+		if s.acceptResumeAttemptAtPromptAcceptance(executionID, resumeAttempt) {
+			registry.finishAfterInitialPromptAcceptance(resumeAttempt)
+		}
+	}
+	onFailure = func() { registry.abortInitialPromptHold(resumeAttempt) }
+	return release, onDispatched, onFailure, nil
 }
 
 type promptClaimRollback struct {
@@ -7939,6 +7969,16 @@ func modelSwitchRequired(session *models.TaskSession, model string) bool {
 }
 
 func (s *Service) trySwitchModel(ctx context.Context, taskID, sessionID, model, effectivePrompt string, session *models.TaskSession) (*PromptResult, bool, error) {
+	return s.trySwitchModelWithDispatchCallbacks(ctx, taskID, sessionID, model, effectivePrompt, session, nil, nil)
+}
+
+func (s *Service) trySwitchModelWithDispatchCallbacks(
+	ctx context.Context,
+	taskID, sessionID, model, effectivePrompt string,
+	session *models.TaskSession,
+	onDispatched func(executionID string),
+	onFailure func(),
+) (*PromptResult, bool, error) {
 	if !modelSwitchRequired(session, model) {
 		return nil, false, nil
 	}
@@ -7954,7 +7994,9 @@ func (s *Service) trySwitchModel(ctx context.Context, taskID, sessionID, model, 
 		zap.String("from", currentModel),
 		zap.String("to", model))
 	switchCtx := context.WithoutCancel(ctx)
-	switchResult, err := s.executor.SwitchModel(switchCtx, taskID, sessionID, model, effectivePrompt)
+	switchResult, err := s.executor.SwitchModelWithDispatchCallbacks(
+		switchCtx, taskID, sessionID, model, effectivePrompt, onDispatched, onFailure,
+	)
 	if err != nil {
 		return nil, true, fmt.Errorf("model switch failed: %w", err)
 	}
