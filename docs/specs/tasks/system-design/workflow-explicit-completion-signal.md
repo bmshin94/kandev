@@ -1,5 +1,5 @@
 ---
-status: draft
+status: current
 system: tasks
 requirements:
   - REQ-TASKS-WORKFLOW-EXPLICIT-COMPLETION-SIGNAL-003
