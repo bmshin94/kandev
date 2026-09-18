@@ -1,179 +1,211 @@
 ---
 created: 2026-09-18
-status: draft
+status: in_progress
 requirements:
   - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-001
   - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-002
+  - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-003
 system_design:
   - ../../specs/tasks/system-design/queued-session-ownership.md
 legacy_specs: []
 ---
 
-# Fix plan: Session-open recovery eligibility
+# Plan: Resume conversations on open without parking UI
 
 ## Overview
 
-Restore automatic conversation recovery after workflow reuse and queue settlement.
-One sequential work order covers both eligibility defects and their combined
-restart case. The task system owns this repair because it owns workflow
-recipients, parking, and deferred launch metadata.
+Opening a workflow-stopped conversation uses normal automatic recovery, including
+older non-primary sessions. Remove the parked-session banner without replacing
+it with another state the user must understand.
 
-## Evidence and requirement conformance
+This replaces the earlier narrow exception for a reused primary session.
+The user's 2026-09-18 instruction explicitly changes the parking policy.
+[The new decision](../../decisions/2026-09-18-session-open-resumes-conversation.md)
+records that change. The task system owns conversation activation and workflow
+recipient isolation. No material product question remains unresolved.
 
-Read-only investigation targeted task `62f15ae6-bb2d-40c5-863b-91366636114d`.
-The running build was `f4c9131307`, the merge commit for PR #3779, and included #3776.
-Both PRs corrected deadlocks. The failing eligibility branches originated in #3755.
+Implement two sequential work orders: first correct recovery and ownership
+handling; then remove parking presentation and verify the full desktop/phone flow.
 
-| UTC, 2026-09-17 | Evidence |
-| --- | --- |
-| 23:00:49 | Startup preserved both resume tokens. Primary `73dced9b-29e5-4f54-bf9a-80c39452cf24` remained input-ready. Secondary `92dc05a8-c936-4647-8142-9fa8acd18daa` changed from RUNNING to WAITING_FOR_INPUT. |
-| 23:01:44 | The browser opened the primary session and requested status. Workspace infrastructure recovered, but the agent did not resume. |
-| 23:05:45 | A read-only status request returned `is_resumable=true`, `needs_resume=true`, `auto_resume_allowed=false`, and `ownership_unavailable`. |
+## Evidence and conformance
 
-Scoped database inspection found a consumed workflow-switch stop intent on the
-primary session. The current committed route named that session as destination.
-Its current parking marker was absent. The task also retained `deferred_launch: {}`.
+The original investigation of task `62f15ae6-bb2d-40c5-863b-91366636114d`
+confirmed `needs_resume=true` with `auto_resume_allowed=false` and
+`ownership_unavailable` on build `f4c9131307`. A consumed workflow-switch stop
+marker blocked recovery. An empty `deferred_launch: {}` was a second blocker.
+Those branches originated in #3755; #3776 and #3779 corrected separate deadlocks.
 
-`autoResumeEligibility` rejects the historical stop marker first. If that marker
-is absent, the empty deferred object independently fails `ReadCeilingDeferral`.
-The frontend then chooses `idle` rather than requesting recovery.
-`stripCeilingRecordKeys` intentionally produces the empty settled representation.
+The user then supplied task `efe289d6-a6cc-4f7b-9c9d-0c3014643270` and a
+screenshot of the parked-session note. The user rejected the note and requested
+resume on open even while a session is parked. The screenshot is presentation
+evidence; this plan does not claim a new live-state investigation of that task.
 
-The existing requirement's AC 001.4 permits legitimate reuse. Its compatibility
-section preserves ordinary recovery. Added AC 001.7 and 001.8 make the restart
-and settled-queue cases explicit. They clarify the same ownership contract.
-The existing passive-inspection ADR already rejects permanent tombstone parking;
-no new ADR or broader ownership policy is needed.
-
-Diagnostic archives remain task-local evidence, not required implementation inputs:
-backend `0c3f8966f98672ab5da9906558307b6f.zip` and frontend
-`97e6c50b66eadef43f5293490e69efd9.zip` under `.kandev/diagnostics/`.
-The backend archive truncated older history; the restart and open events were present.
-Temporary extractions were removed. The investigation did not modify affected task state.
+The old inspection requirement 001.1 and parked-note requirement 003.3 are
+explicitly superseded by 001.9 and 003.8. Criteria 001.7/8 retain restart and
+settled-queue coverage. Queue identity, automatic admission, callback correlation,
+and the deadlock fixes remain compatibility constraints.
 
 ## Scope
 
 ### In scope
 
-- Recognize a consumed historical stop for the exact current committed recipient.
-- Treat an empty settled deferral as no pending launch.
-- Preserve restrictive parking, queue, preference, and automatic-capacity checks.
-- Add service, restart, stale-status, and desktop/mobile recovery regressions.
+- Remove workflow parking and historical stop markers as recovery restrictions.
+- Treat absent, null, and empty settled deferrals as no pending launch.
+- Resume only the selected conversation, without changing workflow ownership.
+- Remove parked-session presentation, unused projection helpers, and locale copy.
+- Audit policy-only parking writers/readers and remove unused code without migrations.
+- Cover free/full capacity, pending destination, restart, preference, and delayed events.
+- Update public recovery documentation when implementation ships.
 
 ### Out of scope
 
-- Removing callback tombstones, repairing the live database, or adding migrations.
-- Changing lock order, replay claims, workflow routing, or queue dispatch policy.
-- Automatically continuing interrupted prompts or replaying settled workflow prompts.
-- New recovery controls, layout, copy, translations, or diagnostics dashboards.
-- Broadening recovery for unrelated legacy ambiguity or nonempty non-ceiling records.
+- Resending interrupted turns or settled workflow prompts on open.
+- Changing workflow primary selection, automatic capacity limits, or manual overrides.
+- Removing genuine launch queue status or background-work/Office parking.
+- New session states, scheduler queues, migrations, or live-data cleanup.
+- Relaunching explicitly cancelled, archived, or completed sessions outside existing rules.
 
 ## Technical approach
 
-Follow [Recovery after reuse and queue settlement](../../specs/tasks/system-design/queued-session-ownership.md#recovery-after-reuse-and-queue-settlement).
-Keep the decision in `task_operations.go:autoResumeEligibility`; extract a small
-helper only if needed for existing complexity limits. Do not alter the general
-stop-intent parser or delete its consumed tombstone.
+Use [Conversation recovery and workflow stop history](../../specs/tasks/system-design/queued-session-ownership.md#conversation-recovery-and-workflow-stop-history).
+Remove parking-policy checks from `autoResumeEligibility`. Keep authorization,
+resumability, archive/terminal rules, and nonempty deferred ownership validation.
+Keep the general stop-intent parser and callback fences intact.
 
-Require the exact committed route, current step, matching profile, primary
-membership, and absent current parking before accepting historical stop evidence.
-Then evaluate pending work. Do not let the route exception bypass a real deferral.
-Accept only an absent, null, or empty deferred object as no queue work. Preserve
-all existing nonempty-record checks and replay parser behavior.
+A queued destination must not get a duplicate resume. A selected sibling can
+resume when capacity permits, while the original deferred recipient and prompt
+stay unchanged. If capacity is full, do not replace accepted work with a sibling
+resume record. Test the existing admission/conflict paths rather than creating
+another queue. A queue or route change after status still requires guarded
+validation. A new parking marker alone is no longer a denial reason.
 
-Exercise `GetTaskSessionStatus`, `passiveLaunchResponse` in `session_launch.go`,
-and `EnsureSession` through their existing service paths. Verify stale allowed
-status cannot authorize execution after a later park or queue change. Preserve
-all admission guards introduced by #3776 and #3779.
+Audit `workflow_parking` readers and writers across models, repository,
+orchestrator, tests, and web. Remove policy-only code when unused; document any
+retained independent purpose. Stored legacy markers become inert. Do not broaden
+this cleanup to execution-stamped stop intents or unrelated parking concepts.
 
-No rendered layout changes are planned, so no ASCII UI preview is required.
-Mobile uses the existing dedicated task layout, task drawer, and session picker.
-The closest exemplar is `mobile-queued-session-ownership.spec.ts`; reuse its
-navigation, session identity assertions, and overflow check. The phone outcome
-matches desktop: recover the eligible conversation without an explicit Resume click.
+Remove `ParkedSessionNote` and `hasWorkflowParkingMarker` from
+`launch-queue-status.tsx`, their caller in `task-chat-panel.tsx`, and their tests.
+Remove `task:parkedSessionNote` from every catalog. Keep real queue status.
 
-## Tests
+## ASCII UI preview
 
-AC suffixes below use `AC-TASKS-QUEUED-SESSION-OWNERSHIP-`.
-New test names are proposed and must exist before their commands run.
+### UI-01: Desktop, earlier conversation selected
 
-| Proposed test in `apps/backend/internal/orchestrator/session_open_recovery_test.go` | Coverage | AC |
+```text
+Before
+[Astra] [Luna] [Plan]
+[This session is parked for the workflow. Opening it does not resume it...]
+Conversation
+Composer
+
+After
+[Astra] [Luna] [Plan]
+Conversation (existing recovery/loading indication when needed)
+Composer
+```
+
+When a genuine launch is queued, its existing task-level status remains visible.
+No replacement parking row, badge, toolbar, or recovery instruction appears.
+Session tabs keep their current location; conversation content owns scrolling.
+
+### UI-02: Phone, earlier conversation selected
+
+```text
+Task header
+[Selected session v]   -> existing Sessions picker
+Conversation
+Composer
+[Chat | Plan | Changes | More]
+```
+
+The task drawer remains the entry point. The session picker selects the
+conversation and normal recovery follows. The dedicated mobile layout, safe-area
+navigation, and single chat scroll owner remain. No hover interaction is required.
+
+UI-01 and UI-02 cover AC 001.9 and 003.8. Placement and absence of parking chrome
+are requirements; text spacing is illustrative. Existing recovery errors, queue
+waiting, loading, and explicit controls keep their established presentation.
+The nearest mobile exemplar is `mobile-queued-session-ownership.spec.ts`.
+
+## Test matrix
+
+AC suffixes use `AC-TASKS-QUEUED-SESSION-OWNERSHIP-`.
+
+| Case | Expected outcome | Criteria |
 | --- | --- | --- |
-| `TestSessionOpenRecoveryEligibility` | Historical consumed marker only; empty deferral only; both together; absent/null deferral baseline | 001.4, 001.7, 001.8 |
-| `TestSessionOpenRecoveryRestrictions` | Current valid/malformed parking; unconsumed marker; primary alone; missing/prepared/wrong-step/wrong-profile route; non-primary source; nonempty invalid and real queued records | 001.1, 001.2, 001.6 |
-| `TestSessionOpenRecoveryStatusAndLaunch` | Status and passive launch agree; explicit execution remains distinct; no settled prompt replay or new session | 001.3, 001.5, 001.7, 001.8 |
-| `TestSessionOpenRecoveryAfterRestart` | Real persisted route promotion and queue settlement, repository reopen/startup reconciliation, retained token and tombstone | 001.4, 001.7, 001.8; 002.4 |
-| `TestSessionOpenRecoveryRechecksOwnership` | Allowed status followed by a new parking stamp, route change, or queued successor; no stale dispatch or metadata clear | 001.1, 001.2, 001.6; 002.6 |
-
-Use existing resume, passive launch, workflow reuse, and queue settlement fixtures.
-Assert zero unintended runtime calls, turns, prompts, and metadata mutations in
-negative cases. Keep callback suppression coverage with the original execution
-stamp after successful reuse. Run the existing deadlock regressions unchanged.
+| Primary or non-primary stopped conversation; valid or legacy parking; no pending work | Normal automatic recovery; no ownership transfer | 001.7, 001.9 |
+| Consumed/unconsumed stop tombstone; malformed parking only | Parking history does not block recovery; callback correlation remains | 001.9 |
+| Empty settled deferral, alone and with parking history | Recovery allowed; no settled prompt replay | 001.8, 001.9 |
+| Same session already owns queued launch | No duplicate resume or prompt | 001.2; 002.4 |
+| Different destination queued; selected sibling; free capacity | Selected conversation recovers; destination record and primary stay unchanged | 001.2, 001.5, 001.9 |
+| Different destination queued; full capacity | No manual override or conflicting queue replacement | 001.2, 001.5; 002.6 |
+| Auto-start prevention enabled | Open remains stopped; existing explicit Resume works | 001.5, 001.9 |
+| Archive, explicit cancellation, completion, authorization failure | Existing lifecycle restrictions remain | 001.9 |
+| Allowed status followed by conflicting queue or route change | Guarded admission rejects stale execution | 001.2, 001.6; 002.6 |
+| Restart after switch or queue settlement | Conversation context survives; opening requests normal recovery | 001.7, 001.8, 001.9 |
+| Desktop/phone with stored parking marker | No parked note; ordinary controls and real queue status remain | 003.8 |
 
 ## E2E tests
 
-Add scenarios to existing desktop and mobile queued-session ownership specs.
-Use their shared helper and isolated `backend.restart()` fixture. Do not restart
-the developer instance or write production database rows.
+Update the existing desktop/mobile queued-session ownership specs and helper.
+Replace assertions that require zero predecessor activation or a parked note.
+Assert the selected conversation resumes without clicking Resume or sending a
+message when preference and capacity permit. Capture `session_open` intent and
+provider readiness; workspace readiness alone is insufficient.
 
-1. Create a source, switch away, then legitimately return through workflow reuse.
-   Settle the turn, restart the fixture backend, and open the reused conversation.
-2. Defer a destination behind a fixture capacity holder, release capacity, and
-   wait for exactly one dispatch. Settle it, restart, and open that conversation.
-3. Combine reuse and settled deferral in one scenario to prevent either fix from
-   masking the other. Include auto-start prevention enabled as a negative control.
+Retain exact destination queue/prompt/primary assertions. Keep source message and
+turn counts unchanged where open only restores provider context. Test free and
+full capacity separately, including no manual override and no queue replacement.
+Release only fixture capacity holders and assert one destination prompt delivery.
 
-Assert fixture metadata establishes each precondition before restart. Observe
-`session_open` recovery and restored agent readiness without clicking Resume or
-sending a new prompt. Verify the same session and conversation survive, the
-settled workflow prompt appears once, and the parked sibling gains no activity.
-A workspace-ready signal alone is not sufficient evidence of agent recovery.
-With prevention enabled, opening remains passive and explicit Resume still works.
-Existing capacity-full and parked/queued inspection tests remain required controls.
+Use a workflow switch to establish real stopped-session metadata. Add restart
+via the isolated `backend.restart()` fixture after leaving the target page.
+Cover historical marker only, empty settled deferral only, and both together.
+Verify same conversation identity and no prompt replay after recovery.
 
-On phones, enter through the task drawer and use the existing session picker.
-Assert visible conversation identity and no horizontal document overflow at 393 px.
-Keep fixture settings and capacity holders scoped, restore them in `finally`,
-and use bounded event/poll assertions rather than arbitrary sleeps.
+Use the existing phone task drawer and session picker at 393 px. Assert no
+parking note, no document horizontal overflow, and usable existing controls.
+Restore settings and runtime overrides in `finally`. No developer-instance restart
+or direct production database mutation is authorized.
 
 ## Work orders
 
-- [ ] [Task 01: Repair and verify session-open eligibility](task-01-repair-session-open-eligibility.md)
+- [x] [Task 01: Restore ordinary recovery for workflow-stopped sessions](task-01-repair-session-open-eligibility.md)
+- [ ] [Task 02: Remove parking presentation and verify user flows](task-02-remove-parking-presentation.md)
 
-No subagents are authorized. All implementation checks belong to Task 01.
+Order: 01 then 02. No subagents are authorized.
 
 ## Related delivery records
 
-[Queued ownership](../queued-session-ownership/plan.md) and its Task 01 own the
-original inspection contract. This package adds the missing recovery regressions.
-Their historical results and outstanding PostgreSQL checks remain unchanged.
+[Queued ownership](../queued-session-ownership/plan.md) is historical delivery
+context. Its parked-suppression and parked-note scenarios are superseded by this
+package. Exact queue ownership tests remain relevant. Keep historical verification
+results and outstanding PostgreSQL checks unchanged; record new results here.
+
 [Boot deadlock](../ceiling-boot-deadlock/plan.md) and
 [replay/cancellation deadlock](../ceiling-replay-cancellation-deadlock/plan.md)
-remain compatibility inputs. This package does not reopen their completed work.
+remain compatibility inputs. Do not change their lock order or claim fences.
 
 ## Documentation impact
 
-This design-only change updates internal requirements, design, and delivery records.
-Implementation restores documented recovery behavior without new settings or copy.
-Recheck `docs/public/tasks-and-workflows.md` and `docs/public/agents-and-profiles.md`
-during implementation; update only if their recovery explanation contradicts the fix.
+Task 02 updates `docs/public/tasks-and-workflows.md` and
+`docs/public/agents-and-profiles.md`: opening restores the selected conversation
+under normal controls without changing workflow ownership. Remove instructions
+that require a message solely because the workflow stopped the conversation.
+No public behavior claim ships during this design-only turn.
 
 ## Verification results
 
-Implementation: pending. No production code or permanent tests changed in planning.
-Design validation on 2026-09-18:
-
-- `python3 scripts/list-docs.py validate`: passed (288 decisions, 1002 specifications).
-- `python3 scripts/lint-spec-files.test.py`: passed (36 tests).
-- `python3 scripts/lint-spec-files.py --all`: passed.
-- `git diff --check`: passed.
-- Work-order AC and design references: checked against existing owning files.
-- Package status: draft plan and pending work order; implementation tests not run.
+Task 01 backend implementation is complete. Focused recovery, race, model/SQLite,
+build, lint, and the full orchestrator package pass. The complete backend test
+target still reports unrelated environment-sensitive failures in probe process
+detection and home configuration discovery. Task 02 remains pending for the
+frontend presentation removal and desktop/mobile E2E coverage.
 
 ## Risks
 
-- Ignoring all consumed markers can wake a parked predecessor. Require current destination evidence.
-- Returning early for a reused destination can bypass its real queued launch.
-- Removing tombstones can let delayed callbacks damage the reused session.
-- A workspace-only execution can make an E2E test pass without agent recovery.
-- New locks or runtime calls under admission can reintroduce the fixed deadlocks.
+- Removing callback tombstones can let stale events affect a resumed execution.
+- Opening a sibling can consume capacity, but must never steal its destination's queue.
+- Hiding the note without changing eligibility leaves the reported defect intact.
+- Tests that mistake workspace recovery for agent recovery give false confidence.

@@ -1,147 +1,99 @@
 ---
 id: "01-repair-session-open-eligibility"
-title: "Repair and verify session-open eligibility"
-status: pending
+title: "Restore ordinary recovery for workflow-stopped sessions"
+status: done
 wave: 1
 depends_on: []
 plan: "plan.md"
 requirements:
   - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-001
   - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-002
+  - REQ-TASKS-QUEUED-SESSION-OWNERSHIP-003
 acceptance_criteria:
-  - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.1
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.2
-  - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.3
-  - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.4
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.5
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.6
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.7
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.8
+  - AC-TASKS-QUEUED-SESSION-OWNERSHIP-001.9
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-002.4
   - AC-TASKS-QUEUED-SESSION-OWNERSHIP-002.6
+  - AC-TASKS-QUEUED-SESSION-OWNERSHIP-003.8
 system_design:
   - ../../specs/tasks/system-design/queued-session-ownership.md
 ---
 
-# Task 01: Repair and verify session-open eligibility
+# Task 01: Restore ordinary recovery for workflow-stopped sessions
 
 ## Summary
 
-Correct historical-stop and settled-deferral classification in the shared passive
-recovery predicate. Prove each defect independently, then verify their combined
-restart path through desktop and phone task opening.
+Remove workflow parking as an automatic recovery restriction. Preserve workflow
+recipient isolation, automatic capacity admission, and execution-correlated callbacks.
 
 ## In scope
 
-- Add the five proposed service tests in the [plan matrix](plan.md#tests).
-- Start with `TestSessionOpenRecoveryEligibility` and record behavioral RED for
-  historical-stop only, empty-deferral only, and combined persisted metadata.
-- Add restrictive controls before changing `autoResumeEligibility`.
-- Require the exact committed destination evidence defined in the design.
-- Continue checking pending work after recognizing historical stop evidence.
-- Accept absent, null, and empty deferred objects without changing the replay parser.
-- Cover status, passive launch, ensure, persistence/restart, and stale allowed status.
-- Exercise existing workflow promotion and queue settlement writers in integration tests.
-- Keep both the tombstone and delayed-callback suppression intact after reuse.
-- Extend the existing E2E specs with all three restart scenarios and the preference control.
-- Record RED/GREEN results and synchronize this package and companion references.
+- Add `session_open_recovery_test.go` with `TestSessionOpenRecoveryEligibility`,
+  `TestSessionOpenRecoveryOwnership`, `TestSessionOpenRecoveryAfterRestart`, and
+  `TestSessionOpenRecoveryDelayedCallbacks`.
+- Record RED for modern parking, historical stop intent, empty deferral, and their combination.
+- Cover primary/non-primary sessions and the full backend matrix in the plan.
+- Remove parking and stop-intent suppression from `autoResumeEligibility`.
+- Accept empty settled deferrals; preserve nonempty queue validation.
+- Exercise status, `passiveLaunchResponse`, `EnsureSession`, and real automatic admission.
+- Verify full-capacity sibling recovery cannot replace another destination's accepted work.
+- Audit parking-only writers/readers and remove unused helpers with their obsolete tests.
+- Keep stop-intent tombstones, callback parsing, and independent lifecycle safeguards.
+- Update old tests that assert parked-session suppression to assert the new contract.
 
 ## Out of scope
 
-No schema, repository writer, live-data repair, lock-order, or replay-policy change
-is planned. No new UI layout, copy, settings, or provider-specific behavior is
-required. Do not infer permission to resume unrelated parked conversations.
+UI removal and rendered tests belong to Task 02. No live-data edits, migration,
+new queue, manual ceiling override, workflow promotion, or prompt replay.
 
 ## Acceptance
 
-1. Each positive case reports eligible recovery and reaches the existing automatic
-   admission path. The same conversation resumes without another session or
-   duplicate settled workflow prompt. Status reads leave metadata unchanged.
-2. Current parking, queued work, ambiguous ownership, terminal/archive rules,
-   prevention preference, and capacity limits retain their existing behavior.
-   A newer ownership change defeats stale allowed status at passive admission.
-3. The backend tests and both rendered E2E projects pass. Tombstones remain
-   effective against delayed callbacks, and the existing deadlock tests pass.
+1. Selected stopped conversations, including non-primary ones, recover under normal
+   rules regardless of workflow parking metadata. Empty settled records do not block them.
+2. Actual queued destinations, guarded admission, capacity, archive, terminal, and
+   authorization rules remain intact. Opening a sibling never changes the queued prompt or primary.
+3. Persisted restart tests and delayed-event tests pass without deleting stop tombstones.
+   Existing deadlock regressions remain green.
 
 ## Verification
 
-Run from the repository root. Install dependencies once when this worktree lacks them.
-Use the repository TDD skill and backend test guidance before writing tests.
-The proposed tests must exist before the corresponding commands run.
+Run from repository root. Add proposed tests before their commands.
 
 ```bash
-(cd apps && pnpm install --frozen-lockfile)
 (cd apps/backend && go test ./internal/orchestrator -run '^TestSessionOpenRecovery' -count=1 -timeout=120s)
-(cd apps/backend && go test -race ./internal/orchestrator -run 'TestSessionOpenRecovery|TestAutoResumeEligibility|TestGetTaskSessionStatus|TestPassiveLaunchResponse|TestEnsureSession|TestReuseCommittedWorkflowRoute|TestPromoteWorkflowSessionRoute|TestClearWorkflowParking|Test.*ProfileSwitch|TestCeilingReplay' -count=1 -timeout=300s)
-(cd apps/web && pnpm exec vitest run hooks/domains/session/use-session-resumption.test.ts)
-(cd apps/web && pnpm e2e:run --project chromium tests/workflow/queued-session-ownership.spec.ts)
-(cd apps/web && pnpm e2e:run --project mobile-chrome tests/workflow/mobile-queued-session-ownership.spec.ts)
-python3 scripts/list-docs.py validate
-python3 scripts/lint-spec-files.test.py
-python3 scripts/lint-spec-files.py --all
+(cd apps/backend && go test -race ./internal/orchestrator -run 'TestSessionOpenRecovery|TestAutoResumeEligibility|TestGetTaskSessionStatus|TestPassiveLaunchResponse|TestEnsureSession|Test.*WorkflowParking|Test.*ProfileSwitch|Test.*WorkflowRoute|TestCeilingReplay' -count=1 -timeout=300s)
+(cd apps/backend && go test ./internal/task/models ./internal/task/repository/sqlite -run 'Test.*WorkflowParking|Test.*DeferredLaunch' -count=1 -timeout=120s)
 git diff --check
 ```
 
-Run desktop and phone suites sequentially. The managed E2E runner builds the
-application and owns fixture teardown. Do not overlap full suites or override
-its worker budget. Capture actual test counts and relevant failure reasons.
-A compile failure, missing test, or missing selector does not establish behavioral RED.
-
-For persisted coverage, reopen the test repository and execute startup reconciliation.
-Do not model restart solely by resetting a struct. For E2E, use the worker's
-`backend.restart()` after closing or navigating away from the target conversation.
-Wait for reconnection before task opening. Do not click Resume in positive cases.
-Assert provider readiness separately from workspace readiness.
-
-No SQL changes are planned, so this package adds no PostgreSQL prerequisite.
-The original ownership package's outstanding PostgreSQL checks remain recorded
-there. If implementation requires dialect-sensitive persistence changes, expand
-this work order and its database checks before marking it complete.
+Use real repository persistence and startup reconciliation for restart coverage.
+Test queue/route replacement between status and launch with deterministic barriers.
+Audit existing test names when removing policy-only code so remaining behavior
+still has coverage. If dialect-sensitive repository behavior changes, add its
+PostgreSQL conformance command before completion. No database migration is planned.
 
 ## Files likely touched
 
-Production:
-
-- `apps/backend/internal/orchestrator/task_operations.go` (`autoResumeEligibility`).
-- A focused helper in the same package only if existing complexity limits require it.
-
-Regression tests:
-
-- `apps/backend/internal/orchestrator/session_open_recovery_test.go` (new).
-- `apps/web/e2e/tests/workflow/queued-session-ownership.spec.ts`.
-- `apps/web/e2e/tests/workflow/mobile-queued-session-ownership.spec.ts`.
-- `apps/web/e2e/tests/workflow/queued-session-ownership-helpers.ts`.
-
-Read-only implementation references:
-
-- `apps/backend/internal/orchestrator/task_operations_resume_test.go`.
-- `apps/backend/internal/orchestrator/session_launch.go` and `session_launch_test.go`.
-- `apps/backend/internal/orchestrator/session_ensure.go` and `session_ensure_test.go`.
-- `apps/backend/internal/orchestrator/workflow_session_target.go` and its tests.
+- `apps/backend/internal/orchestrator/task_operations.go`.
+- `apps/backend/internal/orchestrator/session_launch.go` and `session_ensure.go`.
+- `apps/backend/internal/orchestrator/workflow_session_target.go`.
 - `apps/backend/internal/orchestrator/workflow_profile_session_lifecycle.go`.
-- `apps/backend/internal/orchestrator/ceiling_replay.go` (`stripCeilingRecordKeys`).
-- `apps/backend/internal/orchestrator/service.go` (startup reconciliation).
-- `apps/web/hooks/domains/session/use-session-resumption-operations.ts`.
-- `apps/web/e2e/fixtures/backend.ts` and `apps/web/e2e/pages/session-page.ts`.
-
-Delivery records:
-
-- This work order and `plan.md`.
-- `docs/plans/queued-session-ownership/plan.md` and its Task 01 follow-up link.
+- New `apps/backend/internal/orchestrator/session_open_recovery_test.go`.
+- Existing resume, launch, ensure, workflow-target, and profile-switch tests.
+- Parking-only model/repository helpers and tests, only if the consumer audit proves them unused.
 
 ## Dependencies
 
-None. Implement this work order sequentially after an explicit implementation request.
+None. This replaces the prior work order's current-primary-only exception.
 
 ## Risks
 
-Consumed stop markers protect against delayed callbacks. Do not remove them or
-ignore them solely because `consumed` is true. An exact current destination must
-still pass queue checks. Keep newer parking stamps authoritative.
-
-A stale committed route for another step or profile cannot authorize recovery.
-An empty queue object is a known settled representation; a nonempty malformed
-record remains ambiguous. Keep automatic admission separate from manual overrides.
+Stop-intent metadata is not disposable parking UI state. Preserve event identity
+checks. A queue conflict must not silently redirect a selected conversation.
 
 ## Parallelism
 
@@ -149,17 +101,31 @@ record remains ambiguous. Keep automatic admission separate from manual override
 
 ## Inputs
 
-- [Requirements](../../specs/tasks/requirements/queued-session-ownership.md),
-  especially 001.1-8 and 002.4/6.
-- [Design: recovery after reuse and queue settlement](../../specs/tasks/system-design/queued-session-ownership.md#recovery-after-reuse-and-queue-settlement).
-- [Passive inspection ADR](../../decisions/2026-09-16-passive-session-inspection.md).
-- [Plan evidence, test matrix, and E2E scenarios](plan.md).
-- Existing `TestAutoResumeEligibilityPreservesSessionOwnership`,
-  `TestReuseCommittedWorkflowRouteClearsDestinationParkingOnly`, and
-  `TestPassiveLaunchResponseBlocksAmbiguousLegacyParking` fixtures.
-- Existing desktop/mobile queued-session scenarios and scoped capacity cleanup.
+- [Plan and matrix](plan.md).
+- [Design](../../specs/tasks/system-design/queued-session-ownership.md#conversation-recovery-and-workflow-stop-history).
+- [Decision](../../decisions/2026-09-18-session-open-resumes-conversation.md).
+- Existing automatic admission, workflow reuse, and stop-event regression fixtures.
 
 ## Results
 
-Pending. No production change, permanent test, or implementation verification
-was performed during planning.
+Implemented the backend recovery contract.
+
+- `autoResumeEligibility` no longer treats workflow parking or historical stop-intent metadata as passive recovery ownership.
+- Empty settled `deferred_launch` objects are accepted as having no pending launch.
+- Nonempty deferred launches still require valid destination identity and retain the queued-destination guard.
+- The guarded `session_open` admission boundary rechecks current queue ownership under the existing lifecycle and ceiling-entry lock order. A capacity conflict with another accepted destination returns a successful waiting disposition and preserves that record.
+- Added real `LaunchSession` coverage for status-driven recovery, free/full capacity, unchanged queued recipient and prompt, primary preservation, no manual override, no runtime launch on refusal, and queue replacement after the initial eligibility read.
+- Added restart, successor-execution delayed-callback, stale-ownership, status, passive-launch, `EnsureSession`, primary/non-primary, parking, stop-intent, and settled-record regressions in the split session-open recovery test files. The delayed-callback case keeps an active successor turn and verifies route, primary, execution, and accepted queue state across service reconstruction.
+- Updated existing resume and passive-launch tests to preserve the new recovery contract while retaining stop tombstones and parking lifecycle behavior.
+
+Verification:
+
+- Passed `go test ./internal/orchestrator -run '^TestSessionOpenRecovery' -count=1 -timeout=120s`.
+- Passed the prescribed orchestrator race matrix.
+- Passed the workflow parking and deferred-launch model/SQLite checks.
+- Passed `make -C apps/backend build` and `make -C apps/backend lint`.
+- Passed the full `internal/orchestrator` package.
+- `git diff --check` passed.
+- The complete backend test target reported unrelated environment-sensitive failures in `internal/agentctl/server/process/probe`, `internal/common/config`, and `internal/launcher`; all other reported packages, including the changed package, passed.
+
+Task 02 owns the frontend parking presentation removal and desktop/mobile E2E coverage.
